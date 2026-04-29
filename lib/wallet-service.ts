@@ -195,7 +195,7 @@ export class WalletService {
         throw new Error(`Erreur HTTP: ${response.status}`)
       }
 
-      const data: WalletApiResponse<Wallet> = await response.json()
+      const data: WalletApiResponse<Partial<Wallet>> = await response.json()
 
       if (!data.success) {
         throw new Error(data.message || 'Erreur lors de la création du wallet')
@@ -204,7 +204,7 @@ export class WalletService {
       // Vider le cache pour forcer le rechargement
       this.clearCache()
 
-      return data.data
+      return (Array.isArray(data.data) ? data.data[0] : data.data) as unknown as Wallet
     } catch (error) {
       console.error('Erreur WalletService.createWallet:', error)
       throw error

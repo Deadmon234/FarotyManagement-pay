@@ -15,6 +15,7 @@ export interface User {
   languageName: string | null
   active: boolean
   guest: boolean
+  kycStatus?: 'pending' | 'verified' | 'rejected'
 }
 
 export interface UsersApiResponse {

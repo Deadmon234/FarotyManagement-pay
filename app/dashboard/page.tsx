@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Sidebar from "@/components/sidebar";
 import TopNav from "@/components/topnav";
 import { TrendingUp, Activity, BarChart3, ArrowUp, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
@@ -14,6 +14,18 @@ interface StatCard {
 }
 
 export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8A56B2]"></div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
+  )
+}
+
+function HomeContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const [revenueFilter, setRevenueFilter]           = useState('month')
   const [hoveredDepositIndex,    setHoveredDepositIndex]    = useState<number | null>(null)

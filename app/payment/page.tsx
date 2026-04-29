@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Sidebar from '@/components/sidebar'
@@ -17,6 +17,7 @@ import { TransactionService } from '@/lib/transaction-service'
 import { Transaction } from '@/lib/api-config-wallet'
 import { UserService, User } from '@/lib/user-service'
 import SearchableSelect from '@/components/SearchableSelect'
+import { LayoutGrid, Table, Search } from 'lucide-react'
 
 // Fonction utilitaire pour obtenir le nom d'un wallet
 const getWalletName = (wallet: Wallet): string => {
@@ -1445,24 +1446,36 @@ function PaymentPageContent() {
   const [walletLoading, setWalletLoading] = useState(true)
   const [walletError, setWalletError] = useState<string | null>(null)
   const [walletStats, setWalletStats] = useState<any>(null)
+  const [walletViewMode, setWalletViewMode] = useState<'table' | 'grid'>('table')
+  const [walletSearchQuery, setWalletSearchQuery] = useState('')
+  const [filteredWallets, setFilteredWallets] = useState<Wallet[]>([])
 
   // États pour les comptes
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountLoading, setAccountLoading] = useState(true)
   const [accountError, setAccountError] = useState<string | null>(null)
   const [accountStats, setAccountStats] = useState<any>(null)
+  const [accountViewMode, setAccountViewMode] = useState<'table' | 'grid'>('table')
+  const [accountSearchQuery, setAccountSearchQuery] = useState('')
+  const [filteredAccounts, setFilteredAccounts] = useState<Account[]>([])
 
   // États pour les méthodes de paiement
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [paymentMethodLoading, setPaymentMethodLoading] = useState(true)
   const [paymentMethodError, setPaymentMethodError] = useState<string | null>(null)
   const [paymentMethodStats, setPaymentMethodStats] = useState<any>(null)
+  const [paymentMethodViewMode, setPaymentMethodViewMode] = useState<'table' | 'grid'>('table')
+  const [paymentMethodSearchQuery, setPaymentMethodSearchQuery] = useState('')
+  const [filteredPaymentMethods, setFilteredPaymentMethods] = useState<PaymentMethod[]>([])
 
   // États pour les pays
   const [countries, setCountries] = useState<Country[]>([])
   const [countryLoading, setCountryLoading] = useState(true)
   const [countryError, setCountryError] = useState<string | null>(null)
   const [countryStats, setCountryStats] = useState<any>(null)
+  const [countryViewMode, setCountryViewMode] = useState<'table' | 'grid'>('table')
+  const [countrySearchQuery, setCountrySearchQuery] = useState('')
+  const [filteredCountries, setFilteredCountries] = useState<Country[]>([])
 
   // États pour les transactions
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -1497,12 +1510,38 @@ function PaymentPageContent() {
     }
   }, [section])
 
+  // Filtrer les wallets en fonction de la recherche
+  useEffect(() => {
+    let filtered = wallets
+    if (walletSearchQuery.trim() !== '') {
+      filtered = filtered.filter(wallet =>
+        getWalletName(wallet).toLowerCase().includes(walletSearchQuery.toLowerCase()) ||
+        wallet.currency.nameFr.toLowerCase().includes(walletSearchQuery.toLowerCase()) ||
+        wallet.currency.code.toLowerCase().includes(walletSearchQuery.toLowerCase())
+      )
+    }
+    setFilteredWallets(filtered)
+  }, [wallets, walletSearchQuery])
+
   // Charger les comptes quand on est sur la section accounts
   useEffect(() => {
     if (section === 'accounts') {
       loadAccounts()
     }
   }, [section])
+
+  // Filtrer les comptes en fonction de la recherche
+  useEffect(() => {
+    let filtered = accounts
+    if (accountSearchQuery.trim() !== '') {
+      filtered = filtered.filter(account =>
+        account.accountName.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
+        account.accountSubName?.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
+        account.accountMode.toLowerCase().includes(accountSearchQuery.toLowerCase())
+      )
+    }
+    setFilteredAccounts(filtered)
+  }, [accounts, accountSearchQuery])
 
   // Charger les méthodes de paiement quand on est sur la section methods
   useEffect(() => {
@@ -1511,12 +1550,38 @@ function PaymentPageContent() {
     }
   }, [section])
 
+  // Filtrer les méthodes de paiement en fonction de la recherche
+  useEffect(() => {
+    let filtered = paymentMethods
+    if (paymentMethodSearchQuery.trim() !== '') {
+      filtered = filtered.filter(method =>
+        method.name.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase()) ||
+        method.technicalName.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase()) ||
+        method.slug.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase())
+      )
+    }
+    setFilteredPaymentMethods(filtered)
+  }, [paymentMethods, paymentMethodSearchQuery])
+
   // Charger les pays quand on est sur la section countries
   useEffect(() => {
     if (section === 'countries') {
       loadCountries()
     }
   }, [section])
+
+  // Filtrer les pays en fonction de la recherche
+  useEffect(() => {
+    let filtered = countries
+    if (countrySearchQuery.trim() !== '') {
+      filtered = filtered.filter(country =>
+        country.nameFr.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+        country.nameEn.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+        country.code.toLowerCase().includes(countrySearchQuery.toLowerCase())
+      )
+    }
+    setFilteredCountries(filtered)
+  }, [countries, countrySearchQuery])
 
   // Charger les transactions quand on est sur la section transactions
   useEffect(() => {
@@ -2060,22 +2125,59 @@ function PaymentPageContent() {
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Vos Wallets</h2>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Tous
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
-                    Actifs
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Gelés
-                  </button>
+                <div className="flex items-center gap-2">
+                  {/* Barre de recherche */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher un wallet..."
+                      value={walletSearchQuery}
+                      onChange={(e) => setWalletSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Tous
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                      Actifs
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Gelés
+                    </button>
+                  </div>
+                  <div className="flex items-center border border-gray-300 rounded-lg p-1">
+                    <button
+                      onClick={() => setWalletViewMode('table')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        walletViewMode === 'table'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <Table className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setWalletViewMode('grid')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        walletViewMode === 'grid'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Liste des wallets - 2 par ligne */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {wallets.map((wallet) => (
+                {filteredWallets.map((wallet) => (
                   <div 
                     key={wallet.id} 
                     className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
@@ -2356,22 +2458,59 @@ function PaymentPageContent() {
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Vos Comptes</h2>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Tous
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
-                    Actifs
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    En attente
-                  </button>
+                <div className="flex items-center gap-2">
+                  {/* Barre de recherche */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher un compte..."
+                      value={accountSearchQuery}
+                      onChange={(e) => setAccountSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Tous
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                      Actifs
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      En attente
+                    </button>
+                  </div>
+                  <div className="flex items-center border border-gray-300 rounded-lg p-1">
+                    <button
+                      onClick={() => setAccountViewMode('table')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        accountViewMode === 'table'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <Table className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setAccountViewMode('grid')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        accountViewMode === 'grid'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Liste des comptes - 2 par ligne */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {accounts.map((account) => (
+                {filteredAccounts.map((account) => (
                   <div 
                     key={account.id} 
                     className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
@@ -2637,22 +2776,59 @@ function PaymentPageContent() {
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Méthodes Disponibles</h2>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Toutes
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
-                    Actives
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Inactives
-                  </button>
+                <div className="flex items-center gap-2">
+                  {/* Barre de recherche */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher une méthode..."
+                      value={paymentMethodSearchQuery}
+                      onChange={(e) => setPaymentMethodSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Toutes
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                      Actives
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Inactives
+                    </button>
+                  </div>
+                  <div className="flex items-center border border-gray-300 rounded-lg p-1">
+                    <button
+                      onClick={() => setPaymentMethodViewMode('table')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        paymentMethodViewMode === 'table'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <Table className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setPaymentMethodViewMode('grid')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        paymentMethodViewMode === 'grid'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Liste des méthodes - 2 par ligne */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {paymentMethods.map((method) => (
+                {filteredPaymentMethods.map((method) => (
                   <div 
                     key={method.id} 
                     className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
@@ -2945,22 +3121,59 @@ function PaymentPageContent() {
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Pays Supportés</h2>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Tous
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
-                    Actifs
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Inactifs
-                  </button>
+                <div className="flex items-center gap-2">
+                  {/* Barre de recherche */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher un pays..."
+                      value={countrySearchQuery}
+                      onChange={(e) => setCountrySearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Tous
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                      Actifs
+                    </button>
+                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                      Inactifs
+                    </button>
+                  </div>
+                  <div className="flex items-center border border-gray-300 rounded-lg p-1">
+                    <button
+                      onClick={() => setCountryViewMode('table')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        countryViewMode === 'table'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <Table className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setCountryViewMode('grid')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        countryViewMode === 'grid'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Liste des pays - 2 par ligne */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {countries.map((country) => (
+                {filteredCountries.map((country) => (
                   <div 
                     key={country.id} 
                     className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
@@ -3334,6 +3547,12 @@ function PaymentPageContent() {
 
 export default function PaymentPage() {
   return (
-    <PaymentPageContent />
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8A56B2]"></div>
+      </div>
+    }>
+      <PaymentPageContent />
+    </Suspense>
   )
 }

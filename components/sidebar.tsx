@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Home, CreditCard, Info, BarChart3, Users, TrendingUp, Activity, ChevronRight, Crown, ChevronLeft, ArrowRightLeft, Wallet, User, Globe } from 'lucide-react'
+import { Home, CreditCard, Info, BarChart3, Users, TrendingUp, Activity, ChevronRight, Crown, ChevronLeft, ArrowRightLeft, Wallet, User, Globe, ShieldCheck } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 
@@ -23,7 +23,7 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
     { icon: <Home size={20} />, label: 'Accueil', href: '/dashboard' },
     { icon: <CreditCard size={20} />, label: 'Paiement', href: '/payment' },
     { icon: <Users size={20} />, label: 'Utilisateurs', href: '/users' },
-    { icon: <Info size={20} />, label: 'Informations', href: '#' },
+    // { icon: <Info size={20} />, label: 'Informations', href: '#' },
   ]
 
   const homeNavItems: NavItem[] = [
@@ -41,6 +41,7 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
 
   const usersNavItems: NavItem[] = [
     { icon: <BarChart3 size={20} />, label: 'Vue d\'ensemble', href: '/users' },
+    { icon: <ShieldCheck size={20} />, label: 'KYC', href: '/users/kyc' },
   ]
 
   const isOnPaymentPage = pathname === '/payment' || pathname.startsWith('/wallet') || pathname.startsWith('/countries') || pathname.startsWith('/compte') || pathname.startsWith('/payment-methods')
@@ -133,15 +134,20 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
                       ? 'ring-2 ring-white ring-offset-2 ring-offset-[#8A56B2]' 
                       : ''
                   }`}
+                  style={{
+                    background: isActive ? 'linear-gradient(to bottom, #8A56B2, #6B3FA0)' : undefined,
+                    color: isActive ? 'white' : undefined,
+                    cursor: 'pointer'
+                  }}
                 >
                   {item.icon}
                 </button>
 
                 {/* Tooltip */}
-                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto">
+                <div className="absolute left-full ml-2 bottom-full mb-2 z-[9999] opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto">
                   <div className="bg-gray-950 text-white text-sm font-semibold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap border border-gray-700">
                     {item.label}
-                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-6 border-transparent border-r-gray-950"></div>
+                    <div className="absolute left-1/2 top-0 -translate-x-1/2 border-6 border-transparent border-t-gray-950"></div>
                   </div>
                 </div>
               </Link>
