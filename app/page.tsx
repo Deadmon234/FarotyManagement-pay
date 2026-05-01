@@ -7,7 +7,7 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    router.push('/loginotp')
+    router.replace('/loginotp')
   }, [router])
 
   return null

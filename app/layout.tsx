@@ -13,7 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="fr"
+      lang="en"
       className="h-full antialiased"
       style={{
         fontFamily: 'system-ui, -apple-system, sans-serif'

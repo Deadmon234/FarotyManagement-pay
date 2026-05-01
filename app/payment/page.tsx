@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, Suspense } from 'react'
+import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Sidebar from '@/components/sidebar'
@@ -1436,10 +1436,8 @@ function CreatePaymentMethodForm({
   )
 }
 
-function PaymentPageContent() {
+function PaymentPageContent({ section }: { section: string }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const searchParams = useSearchParams()
-  const section = searchParams.get('section') || 'overview'
   
   // États pour les wallets
   const [wallets, setWallets] = useState<Wallet[]>([])
@@ -1449,6 +1447,7 @@ function PaymentPageContent() {
   const [walletViewMode, setWalletViewMode] = useState<'table' | 'grid'>('table')
   const [walletSearchQuery, setWalletSearchQuery] = useState('')
   const [filteredWallets, setFilteredWallets] = useState<Wallet[]>([])
+  const [walletFilter, setWalletFilter] = useState<'all' | 'active' | 'frozen'>('all')
 
   // États pour les comptes
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -1458,6 +1457,7 @@ function PaymentPageContent() {
   const [accountViewMode, setAccountViewMode] = useState<'table' | 'grid'>('table')
   const [accountSearchQuery, setAccountSearchQuery] = useState('')
   const [filteredAccounts, setFilteredAccounts] = useState<Account[]>([])
+  const [accountFilter, setAccountFilter] = useState<'all' | 'active' | 'frozen'>('all')
 
   // États pour les méthodes de paiement
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
@@ -1467,6 +1467,7 @@ function PaymentPageContent() {
   const [paymentMethodViewMode, setPaymentMethodViewMode] = useState<'table' | 'grid'>('table')
   const [paymentMethodSearchQuery, setPaymentMethodSearchQuery] = useState('')
   const [filteredPaymentMethods, setFilteredPaymentMethods] = useState<PaymentMethod[]>([])
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<'all' | 'active' | 'inactive'>('all')
 
   // États pour les pays
   const [countries, setCountries] = useState<Country[]>([])
@@ -1476,6 +1477,7 @@ function PaymentPageContent() {
   const [countryViewMode, setCountryViewMode] = useState<'table' | 'grid'>('table')
   const [countrySearchQuery, setCountrySearchQuery] = useState('')
   const [filteredCountries, setFilteredCountries] = useState<Country[]>([])
+  const [countryFilter, setCountryFilter] = useState<'all' | 'active' | 'frozen'>('all')
 
   // États pour les transactions
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -1503,104 +1505,15 @@ function PaymentPageContent() {
   const [createPaymentMethodLoading, setCreatePaymentMethodLoading] = useState(false)
   const [createPaymentMethodError, setCreatePaymentMethodError] = useState<string | null>(null)
 
-  // Charger les wallets quand on est sur la section wallets
-  useEffect(() => {
-    if (section === 'wallets') {
-      loadWallets()
-    }
-  }, [section])
-
-  // Filtrer les wallets en fonction de la recherche
-  useEffect(() => {
-    let filtered = wallets
-    if (walletSearchQuery.trim() !== '') {
-      filtered = filtered.filter(wallet =>
-        getWalletName(wallet).toLowerCase().includes(walletSearchQuery.toLowerCase()) ||
-        wallet.currency.nameFr.toLowerCase().includes(walletSearchQuery.toLowerCase()) ||
-        wallet.currency.code.toLowerCase().includes(walletSearchQuery.toLowerCase())
-      )
-    }
-    setFilteredWallets(filtered)
-  }, [wallets, walletSearchQuery])
-
-  // Charger les comptes quand on est sur la section accounts
-  useEffect(() => {
-    if (section === 'accounts') {
-      loadAccounts()
-    }
-  }, [section])
-
-  // Filtrer les comptes en fonction de la recherche
-  useEffect(() => {
-    let filtered = accounts
-    if (accountSearchQuery.trim() !== '') {
-      filtered = filtered.filter(account =>
-        account.accountName.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
-        account.accountSubName?.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
-        account.accountMode.toLowerCase().includes(accountSearchQuery.toLowerCase())
-      )
-    }
-    setFilteredAccounts(filtered)
-  }, [accounts, accountSearchQuery])
-
-  // Charger les méthodes de paiement quand on est sur la section methods
-  useEffect(() => {
-    if (section === 'methods') {
-      loadPaymentMethods()
-    }
-  }, [section])
-
-  // Filtrer les méthodes de paiement en fonction de la recherche
-  useEffect(() => {
-    let filtered = paymentMethods
-    if (paymentMethodSearchQuery.trim() !== '') {
-      filtered = filtered.filter(method =>
-        method.name.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase()) ||
-        method.technicalName.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase()) ||
-        method.slug.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase())
-      )
-    }
-    setFilteredPaymentMethods(filtered)
-  }, [paymentMethods, paymentMethodSearchQuery])
-
-  // Charger les pays quand on est sur la section countries
-  useEffect(() => {
-    if (section === 'countries') {
-      loadCountries()
-    }
-  }, [section])
-
-  // Filtrer les pays en fonction de la recherche
-  useEffect(() => {
-    let filtered = countries
-    if (countrySearchQuery.trim() !== '') {
-      filtered = filtered.filter(country =>
-        country.nameFr.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
-        country.nameEn.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
-        country.code.toLowerCase().includes(countrySearchQuery.toLowerCase())
-      )
-    }
-    setFilteredCountries(filtered)
-  }, [countries, countrySearchQuery])
-
-  // Charger les transactions quand on est sur la section transactions
-  useEffect(() => {
-    if (section === 'transactions') {
-      loadTransactions()
-    }
-  }, [section])
-
-  const loadWallets = async () => {
+  // Memoizer les fonctions de chargement pour éviter les boucles infinies
+  const loadWallets = useCallback(async () => {
     try {
       setWalletLoading(true)
       setWalletError(null)
-      
-      // Charger les wallets et les statistiques
       const [walletsData, statsData] = await Promise.all([
         WalletService.getWallets(),
         WalletService.getWalletStats()
       ])
-      
       setWallets(walletsData)
       setWalletStats(statsData)
     } catch (err) {
@@ -1609,19 +1522,16 @@ function PaymentPageContent() {
     } finally {
       setWalletLoading(false)
     }
-  }
+  }, [])
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     try {
       setAccountLoading(true)
       setAccountError(null)
-      
-      // Charger les comptes et les statistiques
       const [accountsData, statsData] = await Promise.all([
         AccountService.getAccounts(),
         AccountService.getAccountStats()
       ])
-      
       setAccounts(accountsData)
       setAccountStats(statsData)
     } catch (err) {
@@ -1630,19 +1540,16 @@ function PaymentPageContent() {
     } finally {
       setAccountLoading(false)
     }
-  }
+  }, [])
 
-  const loadPaymentMethods = async () => {
+  const loadPaymentMethods = useCallback(async () => {
     try {
       setPaymentMethodLoading(true)
       setPaymentMethodError(null)
-      
-      // Charger les méthodes de paiement et les statistiques
       const [paymentMethodsData, statsData] = await Promise.all([
         PaymentMethodService.getPaymentMethods(),
         PaymentMethodService.getPaymentMethodStats()
       ])
-      
       setPaymentMethods(paymentMethodsData)
       setPaymentMethodStats(statsData)
     } catch (err) {
@@ -1651,19 +1558,16 @@ function PaymentPageContent() {
     } finally {
       setPaymentMethodLoading(false)
     }
-  }
+  }, [])
 
-  const loadCountries = async () => {
+  const loadCountries = useCallback(async () => {
     try {
       setCountryLoading(true)
       setCountryError(null)
-      
-      // Charger les pays et les statistiques
       const [countriesData, statsData] = await Promise.all([
         FarotyCountryService.getCountries(),
         FarotyCountryService.getCountryStats()
       ])
-      
       setCountries(countriesData)
       setCountryStats(statsData)
     } catch (err) {
@@ -1672,19 +1576,16 @@ function PaymentPageContent() {
     } finally {
       setCountryLoading(false)
     }
-  }
+  }, [])
 
-  const loadTransactions = async () => {
+  const loadTransactions = useCallback(async () => {
     try {
       setTransactionLoading(true)
       setTransactionError(null)
-      
-      // Charger les transactions et les statistiques
       const [transactionsData, statsData] = await Promise.all([
         TransactionService.getTransactions(),
         TransactionService.getTransactionStats()
       ])
-      
       setTransactions(transactionsData)
       setTransactionStats(statsData)
     } catch (err) {
@@ -1693,52 +1594,204 @@ function PaymentPageContent() {
     } finally {
       setTransactionLoading(false)
     }
-  }
+  }, [])
 
-  const refreshWalletData = () => {
-    WalletService.clearCache()
-    loadWallets()
-  }
+  // Charger les wallets quand on est sur la section wallets
+  useEffect(() => {
+    if (section === 'wallets') {
+      loadWallets()
+    }
+  }, [section, loadWallets])
 
-  const refreshAccountData = () => {
-    AccountService.clearCache()
-    loadAccounts()
-  }
+  // Charger les comptes quand on est sur la section accounts
+  useEffect(() => {
+    if (section === 'accounts') {
+      loadAccounts()
+    }
+  }, [section, loadAccounts])
 
-  const refreshPaymentMethodData = () => {
+  // Charger les méthodes de paiement quand on est sur la section methods
+  useEffect(() => {
+    if (section === 'methods') {
+      loadPaymentMethods()
+    }
+  }, [section, loadPaymentMethods])
+
+  // Charger les pays quand on est sur la section countries
+  useEffect(() => {
+    if (section === 'countries') {
+      loadCountries()
+    }
+  }, [section, loadCountries])
+
+  // Charger les transactions quand on est sur la section transactions
+  useEffect(() => {
+    if (section === 'transactions') {
+      loadTransactions()
+    }
+  }, [section, loadTransactions])
+
+  // Filtrer les wallets en fonction de la recherche et du statut
+  useEffect(() => {
+    let filtered = wallets
+    
+    // Filtrer par statut
+    if (walletFilter === 'active') {
+      filtered = filtered.filter(wallet => !wallet.frozen)
+    } else if (walletFilter === 'frozen') {
+      filtered = filtered.filter(wallet => wallet.frozen)
+    }
+    
+    // Filtrer par recherche
+    if (walletSearchQuery.trim() !== '') {
+      const searchQuery = walletSearchQuery.toLowerCase()
+      filtered = filtered.filter(wallet => {
+        const walletName = getWalletName(wallet).toLowerCase()
+        if (walletName.includes(searchQuery)) return true
+        const currencyName = wallet.currency.nameFr.toLowerCase()
+        const currencyCode = wallet.currency.code.toLowerCase()
+        if (currencyName.includes(searchQuery) || currencyCode.includes(searchQuery)) return true
+        const accountName = wallet.account.accountName.toLowerCase()
+        if (accountName.includes(searchQuery)) return true
+        const walletType = wallet.walletType.toLowerCase()
+        if (walletType.includes(searchQuery)) return true
+        const walletId = wallet.id.toLowerCase()
+        if (walletId.includes(searchQuery)) return true
+        if (!isNaN(Number(searchQuery))) {
+          const searchNumber = Number(searchQuery)
+          const balance = Number(wallet.balance.totalBalance)
+          if (balance >= searchNumber) return true
+        }
+        return false
+      })
+    }
+    
+    setFilteredWallets(filtered)
+  }, [wallets, walletSearchQuery, walletFilter])
+
+  // Filtrer les comptes en fonction de la recherche et du statut
+  useEffect(() => {
+    let filtered = accounts
+    
+    if (accountFilter === 'active') {
+      filtered = filtered.filter(account => !account.frozen)
+    } else if (accountFilter === 'frozen') {
+      filtered = filtered.filter(account => account.frozen)
+    }
+    
+    if (accountSearchQuery.trim() !== '') {
+      filtered = filtered.filter(account =>
+        account.accountName.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
+        account.accountSubName?.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
+        account.accountMode.toLowerCase().includes(accountSearchQuery.toLowerCase())
+      )
+    }
+    
+    setFilteredAccounts(filtered)
+  }, [accounts, accountSearchQuery, accountFilter])
+
+  // Filtrer les méthodes de paiement en fonction de la recherche et du statut
+  useEffect(() => {
+    let filtered = paymentMethods
+    
+    if (paymentMethodFilter === 'active') {
+      filtered = filtered.filter(method => method.active)
+    } else if (paymentMethodFilter === 'inactive') {
+      filtered = filtered.filter(method => !method.active)
+    }
+    
+    if (paymentMethodSearchQuery.trim() !== '') {
+      filtered = filtered.filter(method =>
+        method.name.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase()) ||
+        method.technicalName.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase()) ||
+        method.referenceCurrency.toLowerCase().includes(paymentMethodSearchQuery.toLowerCase())
+      )
+    }
+    
+    setFilteredPaymentMethods(filtered)
+  }, [paymentMethods, paymentMethodSearchQuery, paymentMethodFilter])
+
+  // Filtrer les pays en fonction de la recherche et du statut
+  useEffect(() => {
+    let filtered = countries
+    
+    if (countryFilter === 'active') {
+      filtered = filtered.filter(country => country.active)
+    } else if (countryFilter === 'frozen') {
+      filtered = filtered.filter(country => !country.active)
+    }
+    
+    if (countrySearchQuery.trim() !== '') {
+      filtered = filtered.filter(country =>
+        country.nameFr.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+        country.nameEn.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+        country.code.toLowerCase().includes(countrySearchQuery.toLowerCase())
+      )
+    }
+    
+    setFilteredCountries(filtered)
+  }, [countries, countrySearchQuery, countryFilter])
+
+  const refreshWalletData = useCallback(async () => {
+    try {
+      setWalletLoading(true)
+      setWalletError(null)
+      const [walletsData, statsData] = await Promise.all([
+        WalletService.getWallets(true),
+        WalletService.getWalletStats()
+      ])
+      setWallets(walletsData)
+      setWalletStats(statsData)
+      console.log('Données wallets rafraîchies avec succès')
+    } catch (err) {
+      console.error('Erreur lors du rafraîchissement des wallets:', err)
+      setWalletError('Impossible de rafraîchir les wallets. Veuillez réessayer.')
+    } finally {
+      setWalletLoading(false)
+    }
+  }, [])
+
+  const refreshAccountData = useCallback(async () => {
+    try {
+      setAccountLoading(true)
+      setAccountError(null)
+      const [accountsData, statsData] = await Promise.all([
+        AccountService.getAccounts(true),
+        AccountService.getAccountStats()
+      ])
+      setAccounts(accountsData)
+      setAccountStats(statsData)
+      console.log('Données comptes rafraîchies avec succès')
+    } catch (err) {
+      console.error('Erreur lors du rafraîchissement des comptes:', err)
+      setAccountError('Impossible de rafraîchir les comptes. Veuillez réessayer.')
+    } finally {
+      setAccountLoading(false)
+    }
+  }, [])
+
+  const refreshPaymentMethodData = useCallback(() => {
     PaymentMethodService.clearCache()
     loadPaymentMethods()
-  }
+  }, [loadPaymentMethods])
 
-  const refreshCountryData = () => {
+  const refreshCountryData = useCallback(() => {
     FarotyCountryService.clearCache()
     loadCountries()
-  }
+  }, [loadCountries])
 
-  const refreshTransactionData = () => {
+  const refreshTransactionData = useCallback(() => {
     TransactionService.clearCache()
     loadTransactions()
-  }
+  }, [loadTransactions])
 
   // Fonction pour créer un nouveau wallet
-  const handleCreateWallet = async (walletData: {
-    accountId: string
-    currencyCode: string
-    walletType: 'PERSONAL' | 'BUSINESS'
-    legalIdentifier: string
-    refId: string
-  }) => {
+  const handleCreateWallet = useCallback(async (walletData: any) => {
     try {
       setCreateWalletLoading(true)
       setCreateWalletError(null)
-      
-      const newWallet = await WalletService.createWallet(walletData)
-      
-      // Fermer le formulaire et rafraîchir les données
-      setShowCreateWalletForm(false)
+      await WalletService.createWallet(walletData)
       refreshWalletData()
-      
-      // Afficher un message de succès (pourrait être amélioré avec un toast)
       alert('Wallet créé avec succès!')
     } catch (error) {
       console.error('Erreur lors de la création du wallet:', error)
@@ -1746,10 +1799,27 @@ function PaymentPageContent() {
     } finally {
       setCreateWalletLoading(false)
     }
-  }
+  }, [refreshWalletData])
+
+  // Fonctions pour gérer les filtres
+  const handleWalletFilterChange = useCallback((filter: 'all' | 'active' | 'frozen') => {
+    setWalletFilter(filter)
+  }, [])
+
+  const handleAccountFilterChange = useCallback((filter: 'all' | 'active' | 'frozen') => {
+    setAccountFilter(filter)
+  }, [])
+
+  const handleCountryFilterChange = useCallback((filter: 'all' | 'active' | 'frozen') => {
+    setCountryFilter(filter)
+  }, [])
+
+  const handlePaymentMethodFilterChange = useCallback((filter: 'all' | 'active' | 'inactive') => {
+    setPaymentMethodFilter(filter)
+  }, [])
 
   // Fonction pour créer un nouveau compte
-  const handleCreateAccount = async (accountData: {
+  const handleCreateAccount = useCallback(async (accountData: {
     userId: string
     accountName: string
     countryId: string
@@ -1760,14 +1830,9 @@ function PaymentPageContent() {
     try {
       setCreateAccountLoading(true)
       setCreateAccountError(null)
-      
-      const newAccount = await AccountService.createAccount(accountData)
-      
-      // Fermer le formulaire et rafraîchir les données
+      await AccountService.createAccount(accountData)
       setShowCreateAccountForm(false)
       refreshAccountData()
-      
-      // Afficher un message de succès (pourrait être amélioré avec un toast)
       alert('Compte créé avec succès!')
     } catch (error) {
       console.error('Erreur lors de la création du compte:', error)
@@ -1775,21 +1840,16 @@ function PaymentPageContent() {
     } finally {
       setCreateAccountLoading(false)
     }
-  }
+  }, [refreshAccountData])
 
   // Fonction pour créer un nouveau pays
-  const handleCreateCountry = async (countryData: any) => {
+  const handleCreateCountry = useCallback(async (countryData: any) => {
     try {
       setCreateCountryLoading(true)
       setCreateCountryError(null)
-      
-      const newCountry = await FarotyCountryService.createCountry(countryData)
-      
-      // Fermer le formulaire et rafraîchir les données
+      await FarotyCountryService.createCountry(countryData)
       setShowCreateCountryForm(false)
       refreshCountryData()
-      
-      // Afficher un message de succès (pourrait être amélioré avec un toast)
       alert('Pays créé avec succès!')
     } catch (error) {
       console.error('Erreur lors de la création du pays:', error)
@@ -1797,21 +1857,16 @@ function PaymentPageContent() {
     } finally {
       setCreateCountryLoading(false)
     }
-  }
+  }, [refreshCountryData])
 
   // Fonction pour créer une nouvelle méthode de paiement
-  const handleCreatePaymentMethod = async (paymentMethodData: any) => {
+  const handleCreatePaymentMethod = useCallback(async (paymentMethodData: any) => {
     try {
       setCreatePaymentMethodLoading(true)
       setCreatePaymentMethodError(null)
-      
-      const newPaymentMethod = await PaymentMethodService.createPaymentMethod(paymentMethodData)
-      
-      // Fermer le formulaire et rafraîchir les données
+      await PaymentMethodService.createPaymentMethod(paymentMethodData)
       setShowCreatePaymentMethodForm(false)
       refreshPaymentMethodData()
-      
-      // Afficher un message de succès (pourrait être amélioré avec un toast)
       alert('Méthode de paiement créée avec succès!')
     } catch (error) {
       console.error('Erreur lors de la création de la méthode de paiement:', error)
@@ -1819,7 +1874,7 @@ function PaymentPageContent() {
     } finally {
       setCreatePaymentMethodLoading(false)
     }
-  }
+  }, [refreshPaymentMethodData])
 
   // Obtenir la couleur selon le statut
   const getStatusColor = (wallet: Wallet): string => {
@@ -2085,37 +2140,45 @@ function PaymentPageContent() {
 
             {/* Statistiques */}
             <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-blue-600 text-sm font-semibold mb-2">Solde Total</p>
-                <p className="text-3xl font-bold text-blue-900">
-                  {walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : '0 XOF'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : '0 XOF'}
+                  </span>
                 </p>
-                <p className="text-xs text-blue-600 mt-2">
+                <p className="text-xs text-blue-600 mt-auto">
+                  {walletStats ? `${walletStats.totalWallets} wallets` : '0 wallets'}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm min-h-[140px] flex flex-col">
+                <p className="text-green-600 text-sm font-semibold mb-2">Disponible</p>
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {walletStats ? WalletService.formatAmountXOF(walletStats.totalAvailable || 0) : '0 XOF'}
+                  </span>
+                </p>
+                <p className="text-xs text-green-600 mt-auto">
                   {walletStats ? `${walletStats.activeWallets} actifs` : '0 actifs'}
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm">
-                <p className="text-green-600 text-sm font-semibold mb-2">Wallets Actifs</p>
-                <p className="text-3xl font-bold text-green-900">
-                  {walletStats ? walletStats.activeWallets : '0'}
-                </p>
-                <p className="text-xs text-green-600 mt-2">
-                  {walletStats ? `${walletStats.totalWallets} totaux` : '0 totaux'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm">
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-purple-600 text-sm font-semibold mb-2">Transactions</p>
-                <p className="text-3xl font-bold text-purple-900">
-                  {walletStats ? walletStats.totalTransactions : '0'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-purple-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {walletStats ? walletStats.totalTransactions : '0'}
+                  </span>
                 </p>
-                <p className="text-xs text-purple-600 mt-2">Total</p>
+                <p className="text-xs text-purple-600 mt-auto">Total</p>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm">
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-orange-600 text-sm font-semibold mb-2">En Attente</p>
-                <p className="text-3xl font-bold text-orange-900">
-                  {walletStats ? WalletService.formatAmountXOF(walletStats.totalPending) : '0 XOF'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-orange-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {walletStats ? WalletService.formatAmountXOF(walletStats.totalPending) : '0 XOF'}
+                  </span>
                 </p>
-                <p className="text-xs text-orange-600 mt-2">
+                <p className="text-xs text-orange-600 mt-auto">
                   {walletStats ? `${walletStats.frozenWallets} gelés` : '0 gelés'}
                 </p>
               </div>
@@ -2134,17 +2197,41 @@ function PaymentPageContent() {
                       placeholder="Rechercher un wallet..."
                       value={walletSearchQuery}
                       onChange={(e) => setWalletSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                      className="pl-10 pr-4 py-2 border border-gray-300 text-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleWalletFilterChange('all')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        walletFilter === 'all'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Tous
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleWalletFilterChange('active')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        walletFilter === 'active'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Actifs
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleWalletFilterChange('frozen')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        walletFilter === 'frozen'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Gelés
                     </button>
                   </div>
@@ -2175,90 +2262,211 @@ function PaymentPageContent() {
                 </div>
               </div>
 
-              {/* Liste des wallets - 2 par ligne */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredWallets.map((wallet) => (
-                  <div 
-                    key={wallet.id} 
-                    className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
-                    onClick={() => window.location.href = `/wallet/${wallet.id}`}
-                  >
-                    {/* Header avec icône et informations principales */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+              {/* Liste des wallets - selon le mode d'affichage */}
+              {walletViewMode === 'grid' ? (
+                // Mode Grille
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredWallets.map((wallet) => (
+                    <div 
+                      key={wallet.id} 
+                      className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
+                      onClick={() => window.location.href = `/wallet/${wallet.id}`}
+                    >
+                      {/* Header avec icône et informations principales */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+                            wallet.frozen 
+                              ? 'from-red-500 to-red-600' 
+                              : wallet.balance.totalBalance > 0 
+                              ? 'from-emerald-500 to-emerald-600' 
+                              : 'from-gray-500 to-gray-600'
+                          }`}>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+                              <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-lg">{getWalletName(wallet)}</h3>
+                            <p className="text-sm text-gray-600 font-medium">
+                              {wallet.currency.nameFr} · {wallet.currency.code}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
                           wallet.frozen 
-                            ? 'from-red-500 to-red-600' 
-                            : wallet.balance.totalBalance > 0 
-                            ? 'from-emerald-500 to-emerald-600' 
-                            : 'from-gray-500 to-gray-600'
+                            ? 'bg-red-100 text-red-700' 
+                            : 'bg-emerald-100 text-emerald-700'
                         }`}>
-                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
-                            <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg">{getWalletName(wallet)}</h3>
-                          <p className="text-sm text-gray-600 font-medium">
-                            {wallet.currency.nameFr} • {wallet.currency.code}
+                          {wallet.frozen ? 'Gelé' : 'Actif'}
+                        </span>
+                      </div>
+
+                      {/* Informations détaillées */}
+                      <div className="space-y-3">
+                        {/* Solde */}
+                        <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Solde Total</p>
+                          <p className="text-2xl font-bold text-gray-900">
+                            {WalletService.formatAmount(wallet.balance.totalBalance, wallet.currency.code)}
                           </p>
+                          <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-green-600">Disponible:</span>
+                              <span className="font-medium text-green-700">
+                                {WalletService.formatAmount(wallet.balance.balance, wallet.currency.code)}
+                              </span>
+                            </div>
+                            {wallet.balance.frozenBalance > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-red-600">Gelé:</span>
+                                <span className="font-medium text-red-700">
+                                  {WalletService.formatAmount(wallet.balance.frozenBalance, wallet.currency.code)}
+                                </span>
+                              </div>
+                            )}
+                            {wallet.balance.pendingBalance > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-amber-600">En attente:</span>
+                                <span className="font-medium text-amber-700">
+                                  {WalletService.formatAmount(wallet.balance.pendingBalance, wallet.currency.code)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Métadonnées */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-blue-50 rounded-lg p-3">
+                            <p className="text-xs text-blue-600 font-medium mb-1">Type</p>
+                            <p className="text-sm font-semibold text-blue-900">{wallet.walletType}</p>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-3">
+                            <p className="text-xs text-purple-600 font-medium mb-1">Transactions</p>
+                            <p className="text-sm font-semibold text-purple-900">{wallet.transactionsCount}</p>
+                          </div>
+                        </div>
+
+                        {/* Date et frais */}
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <p>Créé le {WalletService.formatDate(wallet.createdAt)}</p>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-amber-600">·{wallet.depositFeeRate}%</span>
+                            <span className="text-red-600">·{wallet.withdrawalFeeRate}%</span>
+                          </div>
                         </div>
                       </div>
-                      <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
-                        wallet.frozen 
-                          ? 'bg-red-100 text-red-700' 
-                          : 'bg-emerald-100 text-emerald-700'
-                      }`}>
-                        {wallet.frozen ? 'Gelé' : 'Actif'}
-                      </span>
+
+                      {/* Indicateur de clic */}
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
+                          <path d="M9 5l7 7-7 7"/>
+                        </svg>
+                      </div>
                     </div>
-
-                    {/* Informations détaillées */}
-                    <div className="space-y-3">
-                      {/* Solde */}
-                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Solde disponible</p>
-                        <p className="text-2xl font-bold text-gray-900">
-                          {WalletService.formatAmount(wallet.balance.totalBalance, wallet.currency.code)}
-                        </p>
-                        {wallet.balance.pendingBalance > 0 && (
-                          <p className="text-xs text-amber-600 mt-1">
-                            +{WalletService.formatAmount(wallet.balance.pendingBalance, wallet.currency.code)} en attente
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Métadonnées */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-blue-50 rounded-lg p-3">
-                          <p className="text-xs text-blue-600 font-medium mb-1">Type</p>
-                          <p className="text-sm font-semibold text-blue-900">{wallet.walletType}</p>
-                        </div>
-                        <div className="bg-purple-50 rounded-lg p-3">
-                          <p className="text-xs text-purple-600 font-medium mb-1">Transactions</p>
-                          <p className="text-sm font-semibold text-purple-900">{wallet.transactionsCount}</p>
-                        </div>
-                      </div>
-
-                      {/* Date et frais */}
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <p>Créé le {WalletService.formatDate(wallet.createdAt)}</p>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-amber-600">↓{wallet.depositFeeRate}%</span>
-                          <span className="text-red-600">↑{wallet.withdrawalFeeRate}%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Indicateur de clic */}
-                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
-                        <path d="M9 5l7 7-7 7"/>
-                      </svg>
-                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Mode Tableau
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallet</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Devise</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Solde</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transactions</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredWallets.map((wallet) => (
+                          <tr 
+                            key={wallet.id}
+                            className="hover:bg-gray-50 cursor-pointer transition-colors"
+                            onClick={() => window.location.href = `/wallet/${wallet.id}`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className={`w-10 h-10 bg-gradient-to-br rounded-lg flex items-center justify-center shadow-sm mr-3 ${
+                                  wallet.frozen 
+                                    ? 'from-red-500 to-red-600' 
+                                    : wallet.balance.totalBalance > 0 
+                                    ? 'from-emerald-500 to-emerald-600' 
+                                    : 'from-gray-500 to-gray-600'
+                                }`}>
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+                                    <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                                  </svg>
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{getWalletName(wallet)}</div>
+                                  <div className="text-xs text-gray-500">ID: {wallet.id.slice(0, 8)}...</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">{wallet.currency.nameFr}</div>
+                              <div className="text-xs text-gray-500">{wallet.currency.code}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {WalletService.formatAmount(wallet.balance.totalBalance, wallet.currency.code)}
+                              </div>
+                              <div className="text-xs text-gray-500 space-y-1">
+                                <div className="flex justify-between">
+                                  <span>Disponible:</span>
+                                  <span className="font-medium text-green-600">
+                                    {WalletService.formatAmount(wallet.balance.balance, wallet.currency.code)}
+                                  </span>
+                                </div>
+                                {wallet.balance.frozenBalance > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Gelé:</span>
+                                    <span className="font-medium text-red-600">
+                                      {WalletService.formatAmount(wallet.balance.frozenBalance, wallet.currency.code)}
+                                    </span>
+                                  </div>
+                                )}
+                                {wallet.balance.pendingBalance > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Attente:</span>
+                                    <span className="font-medium text-amber-600">
+                                      {WalletService.formatAmount(wallet.balance.pendingBalance, wallet.currency.code)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-gray-900">{wallet.walletType}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-gray-900">{wallet.transactionsCount}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                wallet.frozen 
+                                  ? 'bg-red-100 text-red-700' 
+                                  : 'bg-emerald-100 text-emerald-700'
+                              }`}>
+                                {wallet.frozen ? 'Gelé' : 'Actif'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {WalletService.formatDate(wallet.createdAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* Actions rapides */}
               <div className="mt-6 pt-6 border-t border-gray-200">
@@ -2405,38 +2613,48 @@ function PaymentPageContent() {
 
             {/* Statistiques */}
             <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-blue-600 text-sm font-semibold mb-2">Total Comptes</p>
-                <p className="text-3xl font-bold text-blue-900">
-                  {accountStats ? accountStats.totalAccounts : '0'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {accountStats ? accountStats.totalAccounts : '0'}
+                  </span>
                 </p>
-                <p className="text-xs text-blue-600 mt-2">
-                  {accountStats ? `${accountStats.verifiedAccounts} vérifiés` : '0 vérifiés'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm">
-                <p className="text-green-600 text-sm font-semibold mb-2">Solde Total</p>
-                <p className="text-3xl font-bold text-green-900">
-                  {accountStats ? AccountService.formatAmount(accountStats.totalBalance) : '0 XOF'}
-                </p>
-                <p className="text-xs text-green-600 mt-2">
+                <p className="text-xs text-blue-600 mt-auto">
                   {accountStats ? `${accountStats.activeAccounts} actifs` : '0 actifs'}
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Transactions</p>
-                <p className="text-3xl font-bold text-purple-900">
-                  {accountStats ? accountStats.totalTransactions : '0'}
+              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm min-h-[140px] flex flex-col">
+                <p className="text-green-600 text-sm font-semibold mb-2">Solde Disponible</p>
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {accountStats ? AccountService.formatAmount(accountStats.totalAvailable || 0) : '0 XOF'}
+                  </span>
                 </p>
-                <p className="text-xs text-purple-600 mt-2">Total</p>
+                <p className="text-xs text-green-600 mt-auto">
+                  {accountStats ? `${accountStats.accountsWithWallets} avec wallets` : '0 avec wallets'}
+                </p>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm">
-                <p className="text-orange-600 text-sm font-semibold mb-2">En Attente</p>
-                <p className="text-3xl font-bold text-orange-900">
-                  {accountStats ? AccountService.formatAmount(accountStats.pendingBalance) : '0 XOF'}
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm min-h-[140px] flex flex-col">
+                <p className="text-purple-600 text-sm font-semibold mb-2">Wallets Totaux</p>
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-purple-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {accountStats ? accountStats.totalWallets : '0'}
+                  </span>
                 </p>
-                <p className="text-xs text-orange-600 mt-2">
-                  {accountStats ? `${accountStats.pendingAccounts} en attente` : '0 en attente'}
+                <p className="text-xs text-purple-600 mt-auto">
+                  {accountStats ? `${accountStats.averageWalletsPerAccount} moy/compte` : '0 moy/compte'}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm min-h-[140px] flex flex-col">
+                <p className="text-orange-600 text-sm font-semibold mb-2">Frais Moyens</p>
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-orange-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {accountStats ? `${accountStats.avgDepositFee}%` : '0%'}
+                  </span>
+                </p>
+                <p className="text-xs text-orange-600 mt-auto">
+                  {accountStats ? `Retrait: ${accountStats.avgWithdrawalFee}%` : 'Retrait: 0%'}
                 </p>
               </div>
             </div>
@@ -2467,18 +2685,42 @@ function PaymentPageContent() {
                       placeholder="Rechercher un compte..."
                       value={accountSearchQuery}
                       onChange={(e) => setAccountSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                      className="pl-10 pr-4 py-2 border border-gray-300 text-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleAccountFilterChange('all')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        accountFilter === 'all'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Tous
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleAccountFilterChange('active')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        accountFilter === 'active'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Actifs
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                      En attente
+                    <button 
+                      onClick={() => handleAccountFilterChange('frozen')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        accountFilter === 'frozen'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
+                      Gelés
                     </button>
                   </div>
                   <div className="flex items-center border border-gray-300 rounded-lg p-1">
@@ -2508,92 +2750,175 @@ function PaymentPageContent() {
                 </div>
               </div>
 
-              {/* Liste des comptes - 2 par ligne */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredAccounts.map((account) => (
-                  <div 
-                    key={account.id} 
-                    className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
-                    onClick={() => window.location.href = `/compte/${account.id}`}
-                  >
-                    {/* Header avec icône et informations principales */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+              {/* Liste des comptes - selon le mode d'affichage */}
+              {accountViewMode === 'grid' ? (
+                // Mode Grille
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {filteredAccounts.map((account) => (
+                    <div 
+                      key={account.id} 
+                      className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
+                      onClick={() => window.location.href = `/compte/${account.id}`}
+                    >
+                      {/* Header avec icône et informations principales */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+                            account.frozen 
+                              ? 'from-red-500 to-red-600' 
+                              : account.walletsCount > 0 
+                              ? 'from-green-500 to-green-600' 
+                              : 'from-gray-500 to-gray-600'
+                          }`}>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+                              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                              <circle cx="9" cy="7" r="4"/>
+                              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 011 0 7.75"/>
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-lg">{account.accountName}</h3>
+                            <p className="text-sm text-gray-600 font-medium">
+                              {account.country.nameFr} · {account.country.code}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
                           account.frozen 
-                            ? 'from-red-500 to-red-600' 
-                            : account.walletsCount > 0 
-                            ? 'from-green-500 to-green-600' 
-                            : 'from-gray-500 to-gray-600'
+                            ? 'bg-red-100 text-red-700' 
+                            : 'bg-green-100 text-green-700'
                         }`}>
-                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
-                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 011 0 7.75"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg">{account.accountName}</h3>
-                          <p className="text-sm text-gray-600 font-medium">
-                            {account.country.nameFr} • {account.country.code}
+                          {account.frozen ? 'Gelé' : 'Actif'}
+                        </span>
+                      </div>
+
+                      {/* Informations détaillées */}
+                      <div className="space-y-3">
+                        {/* Statistiques */}
+                        <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Wallets associés</p>
+                          <p className="text-2xl font-bold text-gray-900">
+                            {account.walletsCount} wallet{account.walletsCount > 1 ? 's' : ''}
                           </p>
+                          {account.accountPaymentMethodsCount > 0 && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              {account.accountPaymentMethodsCount} méthode{account.accountPaymentMethodsCount > 1 ? 's' : ''} de paiement
+                            </p>
+                          )}
                         </div>
-                      </div>
-                      <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
-                        account.frozen 
-                          ? 'bg-red-100 text-red-700' 
-                          : 'bg-green-100 text-green-700'
-                      }`}>
-                        {account.frozen ? 'Gelé' : 'Actif'}
-                      </span>
-                    </div>
 
-                    {/* Informations détaillées */}
-                    <div className="space-y-3">
-                      {/* Statistiques */}
-                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Wallets associés</p>
-                        <p className="text-2xl font-bold text-gray-900">
-                          {account.walletsCount} wallet{account.walletsCount > 1 ? 's' : ''}
-                        </p>
-                        {account.accountPaymentMethodsCount > 0 && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            {account.accountPaymentMethodsCount} méthode{account.accountPaymentMethodsCount > 1 ? 's' : ''} de paiement
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Métadonnées */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-amber-50 rounded-lg p-3">
-                          <p className="text-xs text-amber-600 font-medium mb-1">Mode</p>
-                          <p className="text-sm font-semibold text-amber-900">{account.accountMode}</p>
+                        {/* Métadonnées */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-amber-50 rounded-lg p-3">
+                            <p className="text-xs text-amber-600 font-medium mb-1">Mode</p>
+                            <p className="text-sm font-semibold text-amber-900">{account.accountMode}</p>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-3">
+                            <p className="text-xs text-purple-600 font-medium mb-1">Webhooks</p>
+                            <p className="text-sm font-semibold text-purple-900">{account.webhooksCount}</p>
+                          </div>
                         </div>
-                        <div className="bg-purple-50 rounded-lg p-3">
-                          <p className="text-xs text-purple-600 font-medium mb-1">Webhooks</p>
-                          <p className="text-sm font-semibold text-purple-900">{account.webhooksCount}</p>
+
+                        {/* Date et frais */}
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <p>Ajouté le {AccountService.formatDate(account.createdAt)}</p>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-amber-600">↓{account.depositFeeRate}%</span>
+                            <span className="text-red-600">↑{account.withdrawalFeeRate}%</span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Date et frais */}
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <p>Ajouté le {AccountService.formatDate(account.createdAt)}</p>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-amber-600">↓{account.depositFeeRate}%</span>
-                          <span className="text-red-600">↑{account.withdrawalFeeRate}%</span>
-                        </div>
+                      {/* Indicateur de clic */}
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
+                          <path d="M9 5l7 7-7 7"/>
+                        </svg>
                       </div>
                     </div>
-
-                    {/* Indicateur de clic */}
-                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
-                        <path d="M9 5l7 7-7 7"/>
-                      </svg>
-                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Mode Tableau
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Compte</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pays</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallets</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Méthodes</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredAccounts.map((account) => (
+                          <tr 
+                            key={account.id}
+                            className="hover:bg-gray-50 cursor-pointer transition-colors"
+                            onClick={() => window.location.href = `/compte/${account.id}`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className={`w-10 h-10 bg-gradient-to-br rounded-lg flex items-center justify-center shadow-sm mr-3 ${
+                                  account.frozen 
+                                    ? 'from-red-500 to-red-600' 
+                                    : account.walletsCount > 0 
+                                    ? 'from-green-500 to-green-600' 
+                                    : 'from-gray-500 to-gray-600'
+                                }`}>
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+                                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 011 0 7.75"/>
+                                  </svg>
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{account.accountName}</div>
+                                  <div className="text-xs text-gray-500">ID: {account.id.slice(0, 8)}...</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">{account.country.nameFr}</div>
+                              <div className="text-xs text-gray-500">{account.country.code}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{account.walletsCount}</div>
+                              {account.accountPaymentMethodsCount > 0 && (
+                                <div className="text-xs text-blue-600">
+                                  {account.accountPaymentMethodsCount} méthode{account.accountPaymentMethodsCount > 1 ? 's' : ''}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-gray-900">{account.accountMode}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-gray-900">{account.webhooksCount}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                account.frozen 
+                                  ? 'bg-red-100 text-red-700' 
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {account.frozen ? 'Gelé' : 'Actif'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {AccountService.formatDate(account.createdAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* Actions rapides */}
               <div className="mt-6 pt-6 border-t border-gray-200">
@@ -2785,17 +3110,41 @@ function PaymentPageContent() {
                       placeholder="Rechercher une méthode..."
                       value={paymentMethodSearchQuery}
                       onChange={(e) => setPaymentMethodSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                      className="pl-10 pr-4 py-2 border border-gray-300 text-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handlePaymentMethodFilterChange('all')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        paymentMethodFilter === 'all'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Toutes
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handlePaymentMethodFilterChange('active')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        paymentMethodFilter === 'active'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Actives
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handlePaymentMethodFilterChange('inactive')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        paymentMethodFilter === 'inactive'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Inactives
                     </button>
                   </div>
@@ -2826,115 +3175,221 @@ function PaymentPageContent() {
                 </div>
               </div>
 
-              {/* Liste des méthodes - 2 par ligne */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredPaymentMethods.map((method) => (
-                  <div 
-                    key={method.id} 
-                    className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
-                    onClick={() => window.location.href = `/payment-methods/${method.id}`}
-                  >
-                    {/* Header avec icône et informations principales */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+              {/* Liste des méthodes - selon le mode d'affichage */}
+              {paymentMethodViewMode === 'grid' ? (
+                // Mode Grille
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {filteredPaymentMethods.map((method) => (
+                    <div 
+                      key={method.id} 
+                      className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
+                      onClick={() => window.location.href = `/payment-methods/${method.id}`}
+                    >
+                      {/* Header avec icône et informations principales */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+                            method.active 
+                              ? 'from-blue-500 to-blue-600' 
+                              : method.transactionsCount > 0 
+                              ? 'from-purple-500 to-purple-600' 
+                              : 'from-gray-500 to-gray-600'
+                          }`}>
+                            {method.logoUrl ? (
+                              <img 
+                                src={method.logoUrl} 
+                                alt={method.name}
+                                className="w-8 h-8 object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                  e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                                }}
+                              />
+                            ) : (
+                              <span className="text-white font-bold text-lg">
+                                {PaymentMethodService.getPaymentMethodIcon(method)}
+                              </span>
+                            )}
+                            {!method.logoUrl && (
+                              <span className="text-white font-bold text-lg hidden">
+                                {PaymentMethodService.getPaymentMethodIcon(method)}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-lg">{method.name}</h3>
+                            <p className="text-sm text-gray-600 font-medium">
+                              {method.technicalName} • {method.referenceCurrency}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
                           method.active 
-                            ? 'from-blue-500 to-blue-600' 
-                            : method.transactionsCount > 0 
-                            ? 'from-purple-500 to-purple-600' 
-                            : 'from-gray-500 to-gray-600'
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-gray-100 text-gray-600'
                         }`}>
-                          {method.logoUrl ? (
-                            <img 
-                              src={method.logoUrl} 
-                              alt={method.name}
-                              className="w-8 h-8 object-contain"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                                e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                              }}
-                            />
-                          ) : (
-                            <span className="text-white font-bold text-lg">
-                              {PaymentMethodService.getPaymentMethodIcon(method)}
-                            </span>
-                          )}
-                          {!method.logoUrl && (
-                            <span className="text-white font-bold text-lg hidden">
-                              {PaymentMethodService.getPaymentMethodIcon(method)}
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg">{method.name}</h3>
-                          <p className="text-sm text-gray-600 font-medium">
-                            {method.technicalName} • {method.referenceCurrency}
-                          </p>
-                        </div>
+                          {method.active ? 'Actif' : 'Inactif'}
+                        </span>
                       </div>
-                      <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
-                        method.active 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {method.active ? 'Actif' : 'Inactif'}
-                      </span>
-                    </div>
 
-                    {/* Informations détaillées */}
-                    <div className="space-y-3">
-                      {/* Frais */}
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Frais de transaction</p>
-                        <div className="flex items-center justify-between">
-                          <div className="text-center">
-                            <p className="text-xs text-amber-600 mb-1">Dépôt</p>
-                            <p className="text-lg font-bold text-amber-900">↓{method.depositFeeRate}%</p>
+                      {/* Informations détaillées */}
+                      <div className="space-y-3">
+                        {/* Frais */}
+                        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Frais de transaction</p>
+                          <div className="flex items-center justify-between">
+                            <div className="text-center">
+                              <p className="text-xs text-amber-600 mb-1">Dépôt</p>
+                              <p className="text-lg font-bold text-amber-900">↓{method.depositFeeRate}%</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-red-600 mb-1">Retrait</p>
+                              <p className="text-lg font-bold text-red-900">↑{method.withdrawalFeeRate}%</p>
+                            </div>
                           </div>
-                          <div className="text-center">
-                            <p className="text-xs text-red-600 mb-1">Retrait</p>
-                            <p className="text-lg font-bold text-red-900">↑{method.withdrawalFeeRate}%</p>
+                          {(method.txTva > 0 || method.txPartner > 0) && (
+                            <p className="text-xs text-gray-600 mt-2">
+                              TVA: {method.txTva}% • Partenaire: {method.txPartner}%
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Métadonnées */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-blue-50 rounded-lg p-3">
+                            <p className="text-xs text-blue-600 font-medium mb-1">Limite max</p>
+                            <p className="text-sm font-semibold text-blue-900">
+                              {PaymentMethodService.formatMaxAmount(method.maxTransactionAmount, method.referenceCurrency)}
+                            </p>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-3">
+                            <p className="text-xs text-purple-600 font-medium mb-1">Cooldown</p>
+                            <p className="text-sm font-semibold text-purple-900">{method.transactionCooldown} min</p>
                           </div>
                         </div>
-                        {(method.txTva > 0 || method.txPartner > 0) && (
-                          <p className="text-xs text-gray-600 mt-2">
-                            TVA: {method.txTva}% • Partenaire: {method.txPartner}%
-                          </p>
-                        )}
-                      </div>
 
-                      {/* Métadonnées */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-blue-50 rounded-lg p-3">
-                          <p className="text-xs text-blue-600 font-medium mb-1">Limite max</p>
-                          <p className="text-sm font-semibold text-blue-900">
-                            {PaymentMethodService.formatMaxAmount(method.maxTransactionAmount, method.referenceCurrency)}
-                          </p>
-                        </div>
-                        <div className="bg-purple-50 rounded-lg p-3">
-                          <p className="text-xs text-purple-600 font-medium mb-1">Cooldown</p>
-                          <p className="text-sm font-semibold text-purple-900">{method.transactionCooldown} min</p>
+                        {/* Transactions */}
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <p>Total: {method.transactionsCount} transactions</p>
+                          {method.activeTransactionsCount > 0 && (
+                            <p className="text-green-600 font-medium">{method.activeTransactionsCount} actives</p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Transactions */}
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <p>Total: {method.transactionsCount} transactions</p>
-                        {method.activeTransactionsCount > 0 && (
-                          <p className="text-green-600 font-medium">{method.activeTransactionsCount} actives</p>
-                        )}
+                      {/* Indicateur de clic */}
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
+                          <path d="M9 5l7 7-7 7"/>
+                        </svg>
                       </div>
                     </div>
-
-                    {/* Indicateur de clic */}
-                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
-                        <path d="M9 5l7 7-7 7"/>
-                      </svg>
-                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Mode Tableau
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Méthode</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frais Dépôt</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frais Retrait</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Limite Max</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cooldown</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transactions</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredPaymentMethods.map((method) => (
+                          <tr 
+                            key={method.id}
+                            className="hover:bg-gray-50 cursor-pointer transition-colors"
+                            onClick={() => window.location.href = `/payment-methods/${method.id}`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className={`w-10 h-10 bg-gradient-to-br rounded-lg flex items-center justify-center shadow-sm mr-3 ${
+                                  method.active 
+                                    ? 'from-blue-500 to-blue-600' 
+                                    : method.transactionsCount > 0 
+                                    ? 'from-purple-500 to-purple-600' 
+                                    : 'from-gray-500 to-gray-600'
+                                }`}>
+                                  {method.logoUrl ? (
+                                    <img 
+                                      src={method.logoUrl} 
+                                      alt={method.name}
+                                      className="w-6 h-6 object-contain"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none'
+                                        e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                                      }}
+                                    />
+                                  ) : (
+                                    <span className="text-white font-bold text-sm">
+                                      {PaymentMethodService.getPaymentMethodIcon(method)}
+                                    </span>
+                                  )}
+                                  {!method.logoUrl && (
+                                    <span className="text-white font-bold text-sm hidden">
+                                      {PaymentMethodService.getPaymentMethodIcon(method)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{method.name}</div>
+                                  <div className="text-xs text-gray-500">{method.technicalName} • {method.referenceCurrency}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-amber-900">↓{method.depositFeeRate}%</div>
+                              {(method.txTva > 0 || method.txPartner > 0) && (
+                                <div className="text-xs text-gray-500">
+                                  {method.txTva > 0 && `TVA: ${method.txTva}%`}
+                                  {method.txTva > 0 && method.txPartner > 0 && ' • '}
+                                  {method.txPartner > 0 && `Part: ${method.txPartner}%`}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-red-900">↑{method.withdrawalFeeRate}%</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {PaymentMethodService.formatMaxAmount(method.maxTransactionAmount, method.referenceCurrency)}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">{method.transactionCooldown} min</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{method.transactionsCount}</div>
+                              {method.activeTransactionsCount > 0 && (
+                                <div className="text-xs text-green-600">
+                                  {method.activeTransactionsCount} actives
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                method.active 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {method.active ? 'Actif' : 'Inactif'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* Actions rapides */}
               <div className="mt-6 pt-6 border-t border-gray-200">
@@ -3068,39 +3523,47 @@ function PaymentPageContent() {
 
             {/* Statistiques */}
             <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-blue-600 text-sm font-semibold mb-2">Pays Actifs</p>
-                <p className="text-3xl font-bold text-blue-900">
-                  {countryStats ? countryStats.activeCountries : '0'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {countryStats ? countryStats.activeCountries : '0'}
+                  </span>
                 </p>
-                <p className="text-xs text-blue-600 mt-2">
+                <p className="text-xs text-blue-600 mt-auto">
                   {countryStats ? `sur ${countryStats.totalCountries} totaux` : 'sur 0 totaux'}
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm">
+              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-green-600 text-sm font-semibold mb-2">Comptes Totaux</p>
-                <p className="text-3xl font-bold text-green-900">
-                  {countryStats ? countryStats.totalAccounts : '0'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {countryStats ? countryStats.totalAccounts : '0'}
+                  </span>
                 </p>
-                <p className="text-xs text-green-600 mt-2">
+                <p className="text-xs text-green-600 mt-auto">
                   {countryStats ? `${countryStats.countriesWithAccounts} pays avec comptes` : '0 pays avec comptes'}
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm">
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-purple-600 text-sm font-semibold mb-2">Méthodes</p>
-                <p className="text-3xl font-bold text-purple-900">
-                  {countryStats ? countryStats.totalPaymentMethods : '0'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-purple-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {countryStats ? countryStats.totalPaymentMethods : '0'}
+                  </span>
                 </p>
-                <p className="text-xs text-purple-600 mt-2">
+                <p className="text-xs text-purple-600 mt-auto">
                   {countryStats ? `${countryStats.countriesWithPaymentMethods} pays avec méthodes` : '0 pays avec méthodes'}
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm">
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm min-h-[140px] flex flex-col">
                 <p className="text-orange-600 text-sm font-semibold mb-2">Limites Moyennes</p>
-                <p className="text-3xl font-bold text-orange-900">
-                  {countryStats ? FarotyCountryService.formatAmount(countryStats.averagePaymentAmount) : '0 XOF'}
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-orange-900 leading-tight break-words min-h-[3rem] flex items-center">
+                  <span className="truncate w-full">
+                    {countryStats ? FarotyCountryService.formatAmount(countryStats.averagePaymentAmount) : '0 XOF'}
+                  </span>
                 </p>
-                <p className="text-xs text-orange-600 mt-2">Paiement moyen</p>
+                <p className="text-xs text-orange-600 mt-auto">Paiement moyen</p>
               </div>
             </div>
 
@@ -3130,17 +3593,41 @@ function PaymentPageContent() {
                       placeholder="Rechercher un pays..."
                       value={countrySearchQuery}
                       onChange={(e) => setCountrySearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
+                      className="pl-10 pr-4 py-2 border border-gray-300 text-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8A56B2] focus:border-transparent w-64"
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleCountryFilterChange('all')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        countryFilter === 'all'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Tous
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleCountryFilterChange('active')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        countryFilter === 'active'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Actifs
                     </button>
-                    <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
+                    <button 
+                      onClick={() => handleCountryFilterChange('frozen')}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        countryFilter === 'frozen'
+                          ? 'bg-[#8A56B2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{cursor: 'pointer'}}
+                    >
                       Inactifs
                     </button>
                   </div>
@@ -3171,100 +3658,187 @@ function PaymentPageContent() {
                 </div>
               </div>
 
-              {/* Liste des pays - 2 par ligne */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredCountries.map((country) => (
-                  <div 
-                    key={country.id} 
-                    className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
-                    onClick={() => window.location.href = `/countries/${country.id}`}
-                  >
-                    {/* Header avec drapeau et informations principales */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+              {/* Liste des pays - selon le mode d'affichage */}
+              {countryViewMode === 'grid' ? (
+                // Mode Grille
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {filteredCountries.map((country) => (
+                    <div 
+                      key={country.id} 
+                      className="group relative bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-[#8A56B2] hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden"
+                      onClick={() => window.location.href = `/countries/${country.id}`}
+                    >
+                      {/* Header avec drapeau et informations principales */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-14 h-14 bg-gradient-to-br rounded-2xl flex items-center justify-center shadow-md ${
+                            country.active 
+                              ? 'from-green-500 to-green-600' 
+                              : country.accountsCount > 0 
+                              ? 'from-blue-500 to-blue-600' 
+                              : 'from-gray-500 to-gray-600'
+                          }`}>
+                            <div className="text-2xl">
+                              {FarotyCountryService.getCountryFlag(country)}
+                            </div>
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-lg">{country.nameFr}</h3>
+                            <p className="text-sm text-gray-600 font-medium">
+                              {country.nameEn} • {country.code}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
                           country.active 
-                            ? 'from-green-500 to-green-600' 
-                            : country.accountsCount > 0 
-                            ? 'from-blue-500 to-blue-600' 
-                            : 'from-gray-500 to-gray-600'
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-gray-100 text-gray-600'
                         }`}>
-                          <div className="text-2xl">
-                            {FarotyCountryService.getCountryFlag(country)}
-                          </div>
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg">{country.nameFr}</h3>
-                          <p className="text-sm text-gray-600 font-medium">
-                            {country.nameEn} • {country.code}
-                          </p>
-                        </div>
+                          {country.active ? 'Actif' : 'Inactif'}
+                        </span>
                       </div>
-                      <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
-                        country.active 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {country.active ? 'Actif' : 'Inactif'}
-                      </span>
-                    </div>
 
-                    {/* Informations détaillées */}
-                    <div className="space-y-3">
-                      {/* Limites */}
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Limites de paiement</p>
-                        <div className="flex items-center justify-between">
-                          <div className="text-center">
-                            <p className="text-xs text-blue-600 mb-1">Max paiement</p>
-                            <p className="text-lg font-bold text-blue-900">
-                              {FarotyCountryService.formatAmount(country.maxPaymentAmount)}
+                      {/* Informations détaillées */}
+                      <div className="space-y-3">
+                        {/* Limites */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Limites de paiement</p>
+                          <div className="flex items-center justify-between">
+                            <div className="text-center">
+                              <p className="text-xs text-blue-600 mb-1">Max paiement</p>
+                              <p className="text-lg font-bold text-blue-900">
+                                {FarotyCountryService.formatAmount(country.maxPaymentAmount)}
+                              </p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-indigo-600 mb-1">Max retrait</p>
+                              <p className="text-lg font-bold text-indigo-900">
+                                {country.maxWithdrawalAmount ? FarotyCountryService.formatAmount(country.maxWithdrawalAmount) : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                          {country.withdrawalValidationThreshold && (
+                            <p className="text-xs text-gray-600 mt-2">
+                              Seuil validation: {FarotyCountryService.formatAmount(country.withdrawalValidationThreshold)}
                             </p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-indigo-600 mb-1">Max retrait</p>
-                            <p className="text-lg font-bold text-indigo-900">
-                              {country.maxWithdrawalAmount ? FarotyCountryService.formatAmount(country.maxWithdrawalAmount) : 'N/A'}
-                            </p>
-                          </div>
+                          )}
                         </div>
-                        {country.withdrawalValidationThreshold && (
-                          <p className="text-xs text-gray-600 mt-2">
-                            Seuil validation: {FarotyCountryService.formatAmount(country.withdrawalValidationThreshold)}
-                          </p>
-                        )}
-                      </div>
 
-                      {/* Métadonnées */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-amber-50 rounded-lg p-3">
-                          <p className="text-xs text-amber-600 font-medium mb-1">Validation paiement</p>
-                          <p className="text-sm font-semibold text-amber-900">{country.paymentValidationTime}h</p>
+                        {/* Métadonnées */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-amber-50 rounded-lg p-3">
+                            <p className="text-xs text-amber-600 font-medium mb-1">Validation paiement</p>
+                            <p className="text-sm font-semibold text-amber-900">{country.paymentValidationTime}h</p>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-3">
+                            <p className="text-xs text-purple-600 font-medium mb-1">Validation retrait</p>
+                            <p className="text-sm font-semibold text-purple-900">{country.withdrawalValidationTime}h</p>
+                          </div>
                         </div>
-                        <div className="bg-purple-50 rounded-lg p-3">
-                          <p className="text-xs text-purple-600 font-medium mb-1">Validation retrait</p>
-                          <p className="text-sm font-semibold text-purple-900">{country.withdrawalValidationTime}h</p>
+
+                        {/* Statistiques */}
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <p>Comptes: {country.accountsCount}</p>
+                          {country.paymentMethodsCount > 0 && (
+                            <p className="text-blue-600 font-medium">{country.paymentMethodsCount} méthodes</p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Statistiques */}
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <p>Comptes: {country.accountsCount}</p>
-                        {country.paymentMethodsCount > 0 && (
-                          <p className="text-blue-600 font-medium">{country.paymentMethodsCount} méthodes</p>
-                        )}
+                      {/* Indicateur de clic */}
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
+                          <path d="M9 5l7 7-7 7"/>
+                        </svg>
                       </div>
                     </div>
-
-                    {/* Indicateur de clic */}
-                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8A56B2]">
-                        <path d="M9 5l7 7-7 7"/>
-                      </svg>
-                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Mode Tableau
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pays</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Paiement</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Retrait</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Validation</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comptes</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredCountries.map((country) => (
+                          <tr 
+                            key={country.id}
+                            className="hover:bg-gray-50 cursor-pointer transition-colors"
+                            onClick={() => window.location.href = `/countries/${country.id}`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className={`w-10 h-10 bg-gradient-to-br rounded-lg flex items-center justify-center shadow-sm mr-3 ${
+                                  country.active 
+                                    ? 'from-green-500 to-green-600' 
+                                    : country.accountsCount > 0 
+                                    ? 'from-blue-500 to-blue-600' 
+                                    : 'from-gray-500 to-gray-600'
+                                }`}>
+                                  <div className="text-lg">
+                                    {FarotyCountryService.getCountryFlag(country)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{country.nameFr}</div>
+                                  <div className="text-xs text-gray-500">{country.nameEn}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-gray-900">{country.code}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {FarotyCountryService.formatAmount(country.maxPaymentAmount)}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {country.maxWithdrawalAmount ? FarotyCountryService.formatAmount(country.maxWithdrawalAmount) : 'N/A'}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                <div className="text-xs text-gray-500">Paiement: {country.paymentValidationTime}h</div>
+                                <div className="text-xs text-gray-500">Retrait: {country.withdrawalValidationTime}h</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{country.accountsCount}</div>
+                              {country.paymentMethodsCount > 0 && (
+                                <div className="text-xs text-blue-600">
+                                  {country.paymentMethodsCount} méthodes
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                country.active 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {country.active ? 'Actif' : 'Inactif'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* Actions rapides */}
               <div className="mt-6 pt-6 border-t border-gray-200">
@@ -3545,6 +4119,14 @@ function PaymentPageContent() {
   )
 }
 
+// Composant wrapper qui gère les search params
+function SearchParamsWrapper() {
+  const searchParams = useSearchParams()
+  const section = useMemo(() => searchParams.get('section') || 'overview', [searchParams])
+  
+  return <PaymentPageContent section={section} />
+}
+
 export default function PaymentPage() {
   return (
     <Suspense fallback={
@@ -3552,7 +4134,7 @@ export default function PaymentPage() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8A56B2]"></div>
       </div>
     }>
-      <PaymentPageContent />
+      <SearchParamsWrapper />
     </Suspense>
   )
 }
