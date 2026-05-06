@@ -1,0 +1,459 @@
+/* 
+  GUIDE CSS RESPONSIVE POUR FAROTY
+  Optimisations pour Linux, Windows, macOS, iOS et Android
+*/
+
+/* ==================== BASE RESPONSIVE SETTINGS ==================== */
+
+:root {
+  /* Breakpoints Tailwind (utiliser dans className) */
+  --sm: 640px;     /* sm: */
+  --md: 768px;     /* md: */
+  --lg: 1024px;    /* lg: */
+  --xl: 1280px;    /* xl: */
+  --2xl: 1536px;   /* 2xl: */
+
+  /* Tailles de police responsive */
+  --font-size-mobile: 16px;
+  --font-size-tablet: 18px;
+  --font-size-desktop: 16px;
+
+  /* Padding mobile optimisé */
+  --padding-mobile: 16px;
+  --padding-tablet: 20px;
+  --padding-desktop: 24px;
+}
+
+/* ==================== MOBILE FIRST ==================== */
+
+/* Tous les styles par défaut sont pour mobile */
+html, body {
+  font-size: 16px; /* Empêcher le zoom automatique sur iOS */
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Optimiser pour petits écrans */
+* {
+  box-sizing: border-box;
+}
+
+/* Boutons tactiles - taille minimale 44x44px recommandée Apple HIG */
+button, a, input[type="checkbox"], input[type="radio"] {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 12px 16px;
+  touch-action: manipulation; /* Éviter le double-tap delay */
+}
+
+/* Inputs - 44px de hauteur minimum sur mobile */
+input, textarea, select {
+  font-size: 16px; /* Empêcher le zoom iOS sur les inputs */
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  width: 100%;
+}
+
+input[type="tel"] {
+  font-family: monospace; /* Meilleure lisibilité pour les numéros */
+}
+
+/* Éviter les overflow sur mobile */
+body, html {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ==================== TABLES RESPONSIVE ==================== */
+
+/* Convertir les tables en cards sur mobile */
+@media (max-width: 768px) {
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Momentum scroll sur iOS */
+  }
+
+  thead {
+    display: none; /* Masquer les headers, utiliser data-label */
+  }
+
+  tbody, tr {
+    display: block;
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  td {
+    display: block;
+    padding: 12px;
+    border: none;
+    border-bottom: 1px solid #eee;
+    position: relative;
+    padding-left: 120px; /* Espace pour le label */
+  }
+
+  /* Ajouter les labels depuis data-attribute */
+  td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 12px;
+    font-weight: bold;
+    color: #666;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+
+  td:last-child {
+    border-bottom: none;
+  }
+}
+
+/* ==================== GRILLES RESPONSIVE ==================== */
+
+/* Grid par défaut pour mobile: 1 colonne */
+.grid {
+  gap: 16px; /* Gap plus petit sur mobile */
+}
+
+@media (min-width: 640px) {
+  .grid-sm\:cols-2 {
+    gap: 20px;
+  }
+}
+
+@media (min-width: 768px) {
+  .grid {
+    gap: 24px; /* Gap plus grand sur tablet+ */
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    gap: 32px; /* Gap encore plus grand sur desktop */
+  }
+}
+
+/* ==================== TYPOGRAPHIE RESPONSIVE ==================== */
+
+/* Headings - réduire sur petit mobile */
+h1 {
+  font-size: 24px;
+}
+
+@media (min-width: 640px) {
+  h1 {
+    font-size: 32px;
+  }
+}
+
+@media (min-width: 768px) {
+  h1 {
+    font-size: 36px;
+  }
+}
+
+h2 {
+  font-size: 20px;
+}
+
+@media (min-width: 640px) {
+  h2 {
+    font-size: 24px;
+  }
+}
+
+h3 {
+  font-size: 18px;
+}
+
+@media (min-width: 640px) {
+  h3 {
+    font-size: 20px;
+  }
+}
+
+/* Texte body */
+body {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@media (min-width: 640px) {
+  body {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 768px) {
+  body {
+    font-size: 16px;
+  }
+}
+
+/* ==================== PADDING & MARGIN RESPONSIVE ==================== */
+
+/* Padding par défaut */
+.px-4 { padding-left: 16px; padding-right: 16px; }
+.py-2 { padding-top: 8px; padding-bottom: 8px; }
+.px-6 { padding-left: 24px; padding-right: 24px; }
+.py-3 { padding-top: 12px; padding-bottom: 12px; }
+
+/* Réduire le padding sur très petit mobile */
+@media (max-width: 360px) {
+  .px-4 { padding-left: 12px; padding-right: 12px; }
+  .px-6 { padding-left: 16px; padding-right: 16px; }
+  body { font-size: 13px; }
+}
+
+/* Augmenter le padding sur tablet+ */
+@media (min-width: 768px) {
+  .md\:px-6 { padding-left: 24px; padding-right: 24px; }
+}
+
+/* ==================== NAVIGATION RESPONSIVE ==================== */
+
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* Sidebar cache par défaut sur mobile */
+  .sidebar {
+    display: none; /* Ou transform: translateX(-100%) */
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 200;
+  }
+
+  .sidebar.active {
+    display: block;
+  }
+
+  .sidebar-toggle {
+    display: block; /* Afficher sur mobile */
+  }
+}
+
+@media (min-width: 768px) {
+  .sidebar {
+    display: block !important;
+    position: static;
+    height: auto;
+  }
+
+  .sidebar-toggle {
+    display: none; /* Cacher sur tablet+ */
+  }
+}
+
+/* ==================== FORMS RESPONSIVE ==================== */
+
+form {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .form-row {
+    flex-direction: column;
+  }
+
+  .form-group {
+    width: 100%;
+    margin-bottom: 16px;
+  }
+}
+
+@media (min-width: 640px) {
+  .form-row {
+    display: flex;
+    gap: 16px;
+  }
+
+  .form-group {
+    flex: 1;
+  }
+}
+
+/* ==================== MODAL/DIALOG RESPONSIVE ==================== */
+
+dialog, [role="dialog"] {
+  width: calc(100% - 32px); /* Margin sur mobile */
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 12px;
+}
+
+@media (min-width: 640px) {
+  dialog, [role="dialog"] {
+    width: auto;
+    max-width: 500px;
+  }
+}
+
+@media (min-width: 768px) {
+  dialog, [role="dialog"] {
+    max-width: 600px;
+  }
+}
+
+/* ==================== LANDSCAPE MOBILE ==================== */
+
+@media (max-height: 600px) {
+  /* Réduire le padding en mode landscape */
+  body { padding: 8px; }
+  h1 { font-size: 20px; }
+  button { padding: 8px 12px; min-height: 40px; }
+}
+
+/* ==================== HIGH DPI DEVICES ==================== */
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Optimisations pour Retina et devices haute résolution */
+  border {
+    border-width: 0.5px;
+  }
+}
+
+/* ==================== DARK MODE ==================== */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+
+  table {
+    border-color: #333;
+  }
+
+  td {
+    border-color: #222;
+  }
+}
+
+/* ==================== ACCESSIBILITY ==================== */
+
+/* Respecter les préférences utilisateur */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus visible pour la navigation au clavier */
+:focus-visible {
+  outline: 2px solid #8A56B2;
+  outline-offset: 2px;
+}
+
+/* ==================== ORIENTATION ==================== */
+
+@media (orientation: portrait) {
+  /* Styles pour portrait */
+}
+
+@media (orientation: landscape) {
+  /* Styles pour landscape */
+  .full-height {
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+}
+
+/* ==================== NOTCH SUPPORT (iPhone) ==================== */
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .notch-padding {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ==================== UTILITIES RESPONSIVE ==================== */
+
+/* Afficher/Masquer selon la taille d'écran */
+.hide-mobile { display: none; }
+@media (min-width: 768px) {
+  .hide-mobile { display: block; }
+  .show-mobile { display: none; }
+}
+
+.hide-tablet { display: block; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .hide-tablet { display: none; }
+}
+
+.hide-desktop { display: block; }
+@media (min-width: 1024px) {
+  .hide-desktop { display: none; }
+}
+
+/* ==================== SAFE SCROLLING ==================== */
+
+.scrollable-container {
+  -webkit-overflow-scrolling: touch; /* Momentum scroll iOS */
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* Éviter le scroll horizontal accidentel */
+body {
+  overflow-x: hidden;
+}
+
+/* ==================== TOUCH TARGET SIZE ==================== */
+
+/* Assurer que tous les éléments cliquables sont >= 44x44px */
+.interactive-element {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+}
+
+/* ==================== SAFE AREA INSETS ==================== */
+
+.safe-bottom {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.safe-top {
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+.safe-left {
+  padding-left: max(16px, env(safe-area-inset-left));
+}
+
+.safe-right {
+  padding-right: max(16px, env(safe-area-inset-right));
+}

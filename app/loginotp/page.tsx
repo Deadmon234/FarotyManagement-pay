@@ -391,6 +391,10 @@ export default function LoginOTP() {
 
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) inputRefs.current[index - 1]?.focus()
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleOtpVerify()
+    }
   }
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {

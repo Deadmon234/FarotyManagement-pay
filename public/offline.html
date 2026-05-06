@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#8A56B2">
+  <title>Faroty - Mode hors ligne</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+      min-height: 100vh;
+      color: #333;
+    }
+
+    .offline-container {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 20px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.4s ease-out;
+    }
+
+    @media (max-width: 640px) {
+      .offline-container {
+        padding: 24px 16px;
+        border-radius: 12px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .offline-container {
+        animation: none;
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .offline-icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      color: white;
+    }
+
+    @media (max-width: 640px) {
+      .offline-icon {
+        width: 64px;
+        height: 64px;
+        font-size: 32px;
+        margin-bottom: 16px;
+      }
+    }
+
+    h1 {
+      font-size: 28px;
+      color: #333;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 640px) {
+      h1 {
+        font-size: 24px;
+      }
+    }
+
+    .subtitle {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 640px) {
+      .subtitle {
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+    }
+
+    .status-info {
+      background: #f5f5f5;
+      border-left: 4px solid #667eea;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      text-align: left;
+      font-size: 14px;
+      color: #666;
+    }
+
+    @media (max-width: 640px) {
+      .status-info {
+        padding: 12px;
+        margin-bottom: 16px;
+        font-size: 12px;
+      }
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .status-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-icon {
+      width: 20px;
+      height: 20px;
+      margin-right: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .status-icon.offline {
+      color: #ff6b6b;
+    }
+
+    .status-icon.retry {
+      color: #ffa726;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 14px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    @media (max-width: 640px) {
+      .btn {
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:active {
+      opacity: 0.8;
+      transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+
+    .btn-secondary:active {
+      background: #efefef;
+      transform: scale(0.98);
+    }
+
+    .tips {
+      background: #f0f7ff;
+      border: 1px solid #d1e7f7;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 24px;
+      text-align: left;
+    }
+
+    .tips h3 {
+      font-size: 14px;
+      color: #333;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .tips ul {
+      margin-left: 20px;
+      color: #666;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .tips li {
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 640px) {
+      .tips {
+        display: none;
+      }
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(0, 0, 0, 0.1);
+      border-radius: 50%;
+      border-top-color: #667eea;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: linear-gradient(135deg, #3a3d4d 0%, #2a2d3d 100%);
+      }
+
+      .offline-container {
+        background: #1e1e1e;
+        color: #fff;
+      }
+
+      h1 {
+        color: #fff;
+      }
+
+      .subtitle {
+        color: #999;
+      }
+
+      .status-info {
+        background: #2a2a2a;
+        color: #999;
+        border-left-color: #667eea;
+      }
+
+      .btn-secondary {
+        background: #2a2a2a;
+        color: #fff;
+        border-color: #444;
+      }
+
+      .btn-secondary:active {
+        background: #333;
+      }
+
+      .tips {
+        background: #2a2a3a;
+        border-color: #444;
+      }
+
+      .tips h3 {
+        color: #fff;
+      }
+
+      .tips ul {
+        color: #999;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="offline-icon">📵</div>
+    
+    <h1>Vous êtes hors ligne</h1>
+    <p class="subtitle">
+      Faroty ne peut pas se connecter à Internet. Vérifiez votre connexion et réessayez.
+    </p>
+
+    <div class="status-info">
+      <div class="status-item">
+        <div class="status-icon offline">✕</div>
+        <span id="status-text">Pas de connexion Internet</span>
+      </div>
+      <div class="status-item">
+        <div class="status-icon retry">🔄</div>
+        <span>Reconnexion automatique...</span>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn btn-primary" onclick="location.reload()">
+        <span id="retry-btn-text">Réessayer</span>
+      </button>
+      <button class="btn btn-secondary" onclick="window.history.back()">
+        Retour
+      </button>
+    </div>
+
+    <div class="tips">
+      <h3>💡 Conseils :</h3>
+      <ul>
+        <li>Vérifiez que le Wi-Fi est activé</li>
+        <li>Activez les données mobiles si disponibles</li>
+        <li>Attendez une meilleure réception</li>
+        <li>Redémarrez votre appareil si le problème persiste</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // Afficher le statut de connexion
+    function updateStatus() {
+      const statusText = document.getElementById('status-text');
+      if (navigator.onLine) {
+        statusText.textContent = 'Connexion rétablie ✓';
+        // Attendre un peu avant de recharger
+        setTimeout(() => {
+          location.reload();
+        }, 1000);
+      } else {
+        statusText.textContent = 'Pas de connexion Internet';
+      }
+    }
+
+    // Écouter les changements de connexion
+    window.addEventListener('online', updateStatus);
+    window.addEventListener('offline', updateStatus);
+
+    // Vérifier la connexion au chargement
+    if (navigator.onLine) {
+      // L'utilisateur est probablement passé en ligne pendant le chargement
+      window.location.href = '/';
+    }
+
+    // Recharger toutes les 5 secondes
+    setInterval(() => {
+      if (navigator.onLine) {
+        location.reload();
+      }
+    }, 5000);
+  </script>
+</body>
+</html>

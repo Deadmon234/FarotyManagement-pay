@@ -11,6 +11,7 @@ interface StatCard {
   change: string
   icon: React.ReactNode
   color: string
+  gradient: string
 }
 
 export default function Home() {
@@ -124,10 +125,10 @@ function HomeContent() {
   }
 
   const stats: StatCard[] = [
-    { label: 'Nouveau wallet',         value: '125',             change: '+22.5%', icon: <Wallet size={24}/>,    color: 'from-blue-600 to-cyan-600' },
-    { label: 'Paiement de la journée', value: '1,250,000 XOF',  change: '+8.7%',  icon: <TrendingUp size={24}/>, color: 'from-purple-600 to-pink-600' },
-    { label: 'Transactions',           value: '342',             change: '+12.1%', icon: <Activity size={24}/>,   color: 'from-amber-600 to-orange-600' },
-    { label: 'Revenu mensuel',         value: '28,750,000 XOF', change: '+18.4%', icon: <BarChart3 size={24}/>,  color: 'from-green-600 to-emerald-600' }
+    { label: 'Nouveau wallet',         value: '125',             change: '+22.5%', icon: <Wallet size={24}/>,    color: 'from-purple-600 to-pink-600', gradient: 'linear-gradient(135deg, #9333ea, #ec4899)' },
+    { label: 'Paiement de la journée', value: '1,250,000 XOF',  change: '+8.7%',  icon: <TrendingUp size={24}/>, color: 'from-purple-600 to-pink-600', gradient: 'linear-gradient(135deg, #9333ea, #ec4899)' },
+    { label: 'Transactions',           value: '342',             change: '+12.1%', icon: <Activity size={24}/>,   color: 'from-amber-600 to-orange-600', gradient: 'linear-gradient(135deg, #b45309, #ea580c)' },
+    { label: 'Revenu mensuel',         value: '28,750,000 XOF', change: '+18.4%', icon: <BarChart3 size={24}/>,  color: 'from-green-600 to-emerald-600', gradient: 'linear-gradient(135deg, #16a34a, #059669)' }
   ]
 
   return (
@@ -140,7 +141,7 @@ function HomeContent() {
           <div className="p-8">
             {/* Header */}
             <div className="mb-8">
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-purple-900 to-gray-900 bg-clip-text text-transparent mb-2">
+              <h1 className="text-4xl font-bold text-[#8A56B2] mb-2">
                 Tableau de bord
               </h1>
               <p className="text-gray-600">Bienvenue dans le panel d'administration de FAROTY</p>
@@ -150,10 +151,10 @@ function HomeContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               {stats.map((stat, index) => (
                 <div key={index} className="group relative bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-500 border border-gray-200 hover:border-transparent overflow-hidden">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`}/>
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity duration-500" style={{background: stat.gradient}}/>
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-4">
-                      <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} text-white shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                      <div className="p-3 rounded-xl text-white shadow-lg group-hover:scale-110 transition-transform duration-300" style={{background: stat.gradient}}>
                         {stat.icon}
                       </div>
                       <div className="flex items-center space-x-1 text-green-600 text-sm font-semibold">
@@ -163,7 +164,7 @@ function HomeContent() {
                     <p className="text-gray-600 text-sm font-medium mb-2">{stat.label}</p>
                     <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
                   </div>
-                  <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${stat.color} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left`}/>
+                  <div className="absolute bottom-0 left-0 right-0 h-1 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" style={{background: stat.gradient}}/>
                 </div>
               ))}
             </div>

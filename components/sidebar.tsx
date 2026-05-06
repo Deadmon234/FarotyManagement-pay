@@ -20,28 +20,28 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
   const [hoveredNav, setHoveredNav] = useState<number | null>(null)
 
   const iconItems: NavItem[] = [
-    { icon: <Home size={20} />, label: 'Accueil', href: '/dashboard' },
-    { icon: <CreditCard size={20} />, label: 'Paiement', href: '/payment' },
-    { icon: <Users size={20} />, label: 'Utilisateurs', href: '/users' },
+    { icon: <Home size={20} className="text-inherit" />, label: 'Accueil', href: '/dashboard' },
+    { icon: <CreditCard size={20} className="text-inherit" />, label: 'Paiement', href: '/payment' },
+    { icon: <Users size={20} className="text-inherit" />, label: 'Utilisateurs', href: '/users' },
     // { icon: <Info size={20} />, label: 'Informations', href: '#' },
   ]
 
   const homeNavItems: NavItem[] = [
-    { icon: <BarChart3 size={20} />, label: 'Tableau de bord', href: '/dashboard' },
+    { icon: <BarChart3 size={20} className="text-inherit" />, label: 'Tableau de bord', href: '/dashboard' },
   ]
 
   const paymentNavItems: NavItem[] = [
-    { icon: <BarChart3 size={20} />, label: 'Vue d\'ensemble', href: '/payment' },
-    { icon: <ArrowRightLeft size={20} />, label: 'Transactions', href: '/payment?section=transactions' },
-    { icon: <Wallet size={20} />, label: 'Wallets', href: '/payment?section=wallets' },
-    { icon: <User size={20} />, label: 'Comptes', href: '/payment?section=accounts' },
-    { icon: <CreditCard size={20} />, label: 'Méthode de paiement', href: '/payment?section=methods' },
-    { icon: <Globe size={20} />, label: 'Pays', href: '/payment?section=countries' },
+    { icon: <BarChart3 size={20} className="text-inherit" />, label: 'Vue d\'ensemble', href: '/payment' },
+    { icon: <ArrowRightLeft size={20} className="text-inherit" />, label: 'Transactions', href: '/payment?section=transactions' },
+    { icon: <Wallet size={20} className="text-inherit" />, label: 'Wallets', href: '/payment?section=wallets' },
+    { icon: <User size={20} className="text-inherit" />, label: 'Comptes', href: '/payment?section=accounts' },
+    { icon: <CreditCard size={20} className="text-inherit" />, label: 'Méthode de paiement', href: '/payment?section=methods' },
+    { icon: <Globe size={20} className="text-inherit" />, label: 'Pays', href: '/payment?section=countries' },
   ]
 
   const usersNavItems: NavItem[] = [
-    { icon: <BarChart3 size={20} />, label: 'Vue d\'ensemble', href: '/users' },
-    { icon: <ShieldCheck size={20} />, label: 'KYC', href: '/users/kyc' },
+    { icon: <BarChart3 size={20} className="text-inherit" />, label: 'Vue d\'ensemble', href: '/users' },
+    { icon: <ShieldCheck size={20} className="text-inherit" />, label: 'KYC', href: '/users/kyc' },
   ]
 
   const isOnPaymentPage = pathname === '/payment' || pathname.startsWith('/wallet') || pathname.startsWith('/countries') || pathname.startsWith('/compte') || pathname.startsWith('/payment-methods')
@@ -89,7 +89,7 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
         </div>
 
         {/* Divider */}
-        <div className="w-10 h-px bg-gradient-to-r from-gray-700 to-transparent"></div>
+        <div className="w-10 h-px bg-gray-700"></div>
 
         {/* Icon navigation */}
         <nav className="flex-1 flex flex-col space-y-2.5">
@@ -143,13 +143,6 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
                   {item.icon}
                 </button>
 
-                {/* Tooltip */}
-                <div className="absolute left-full ml-2 bottom-full mb-2 z-[9999] opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto">
-                  <div className="bg-gray-950 text-white text-sm font-semibold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap border border-gray-700">
-                    {item.label}
-                    <div className="absolute left-1/2 top-0 -translate-x-1/2 border-6 border-transparent border-t-gray-950"></div>
-                  </div>
-                </div>
               </Link>
             )
           })}
@@ -161,18 +154,12 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
           <button className="w-11 h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-100 hover:bg-gray-800 transition-all duration-300 hover:scale-105" style={{cursor: 'pointer'}} title="Paramètres">
             <Info size={20} />
           </button>
-          <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto">
-            <div className="bg-gray-950 text-white text-sm font-semibold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap border border-gray-700">
-              Paramètres
-              <div className="absolute right-full top-1/2 -translate-y-1/2 border-6 border-transparent border-r-gray-950"></div>
-            </div>
-          </div>
         </div>
       </div>
 
       {/* Main white sidebar */}
       <div className={`bg-white flex flex-col border-r border-gray-200 shadow-lg transition-all duration-500 overflow-hidden ${
-        isCollapsed ? 'w-0' : 'w-64'
+        isCollapsed ? 'w-0' : 'w-80'
       }`}>
         {/* Header section */}
         <div className="border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white">
@@ -253,9 +240,9 @@ function SidebarContent({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
                   <div className="flex items-center ml-2 flex-1">
                     <div className={`p-2.5 rounded-lg transition-all duration-300 ${
                       isActive
-                        ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-600/40'
+                        ? 'bg-[#8A56B2] text-white shadow-lg shadow-purple-600/40'
                         : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200 group-hover:text-purple-700'
-                    } ${hoveredNav === index && !isActive ? 'scale-105' : ''}`}>
+                    } ${hoveredNav === index && !isActive ? 'scale-120' : ''}`}>
                       {item.icon}
                     </div>
                     <span className={`font-semibold ml-3 text-sm transition-all duration-300 whitespace-nowrap ${
