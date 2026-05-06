@@ -123,7 +123,7 @@ export default function TopNav({ isSidebarCollapsed, onToggleSidebar }: { isSide
         {/* Organization dropdown */}
         <div className="flex items-center space-x-3 px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-all duration-200 group" style={{cursor: 'pointer'}}>
           <div className="w-9 h-9 bg-gradient-to-br from-[#8A56B2] to-[#6B3FA0] rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
-            <Users size={18} className="text-yellow-300" />
+            <Users size={18} className="text-white" />
           </div>
           <span className="text-gray-900 font-semibold text-sm">
             {loading ? 'Chargement...' : user?.fullName ? (
