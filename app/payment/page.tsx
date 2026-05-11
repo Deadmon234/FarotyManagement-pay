@@ -1489,6 +1489,112 @@ function PaymentPageContent({ section }: { section: string }) {
   const [transactionsTotalAllPages, setTransactionsTotalAllPages] = useState(0)
   const [adminTableRefreshSignal, setAdminTableRefreshSignal] = useState(0)
 
+  // Fonction pour obtenir les 4 comptes les plus récents avec des transactions
+  const getRecentAccountsWithTransactions = useCallback(() => {
+    if (!transactions || transactions.length === 0 || !accounts || accounts.length === 0) {
+      return []
+    }
+
+    // Créer un Map pour suivre la transaction la plus récente par compte
+    const accountLatestTransaction = new Map<string, { account: Account; latestDate: string }>()
+
+    transactions.forEach(transaction => {
+      const senderAccountId = transaction.senderInfo?.id
+      const receiverAccountId = transaction.receiverInfo?.id
+
+      // Traiter le sender
+      if (senderAccountId) {
+        const account = accounts.find(acc => acc.id === senderAccountId)
+        if (account && (!accountLatestTransaction.has(senderAccountId) || 
+            new Date(transaction.createdAt) > new Date(accountLatestTransaction.get(senderAccountId)!.latestDate))) {
+          accountLatestTransaction.set(senderAccountId, {
+            account,
+            latestDate: transaction.createdAt
+          })
+        }
+      }
+
+      // Traiter le receiver
+      if (receiverAccountId) {
+        const account = accounts.find(acc => acc.id === receiverAccountId)
+        if (account && (!accountLatestTransaction.has(receiverAccountId) || 
+            new Date(transaction.createdAt) > new Date(accountLatestTransaction.get(receiverAccountId)!.latestDate))) {
+          accountLatestTransaction.set(receiverAccountId, {
+            account,
+            latestDate: transaction.createdAt
+          })
+        }
+      }
+    })
+
+    // Trier par date décroissante et prendre les 4 premiers
+    return Array.from(accountLatestTransaction.values())
+      .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+      .slice(0, 4)
+      .map(item => item.account)
+  }, [transactions, accounts])
+
+  // Fonction pour obtenir les 4 wallets les plus récents dont les comptes ont effectué des transactions
+  const getRecentWalletsWithTransactions = useCallback(() => {
+    if (!transactions || transactions.length === 0 || !wallets || wallets.length === 0 || !accounts || accounts.length === 0) {
+      return []
+    }
+
+    // Créer un Map pour suivre la transaction la plus récente par wallet (via les comptes)
+    const walletLatestTransaction = new Map<string, { wallet: Wallet; latestDate: string }>()
+
+    transactions.forEach(transaction => {
+      const senderAccountId = transaction.senderInfo?.id
+      const receiverAccountId = transaction.receiverInfo?.id
+
+      // Trouver les wallets associés au sender via ses comptes
+      if (senderAccountId) {
+        const senderAccount = accounts.find(acc => acc.id === senderAccountId)
+        if (senderAccount) {
+          // Chercher les wallets où ce compte est propriétaire
+          const senderWallets = wallets.filter(w => 
+            w.walletOwners?.some(owner => owner.userId === senderAccount.userId)
+          )
+          senderWallets.forEach(wallet => {
+            if (!walletLatestTransaction.has(wallet.id) || 
+                new Date(transaction.createdAt) > new Date(walletLatestTransaction.get(wallet.id)!.latestDate)) {
+              walletLatestTransaction.set(wallet.id, {
+                wallet,
+                latestDate: transaction.createdAt
+              })
+            }
+          })
+        }
+      }
+
+      // Trouver les wallets associés au receiver via ses comptes
+      if (receiverAccountId) {
+        const receiverAccount = accounts.find(acc => acc.id === receiverAccountId)
+        if (receiverAccount) {
+          // Chercher les wallets où ce compte est propriétaire
+          const receiverWallets = wallets.filter(w => 
+            w.walletOwners?.some(owner => owner.userId === receiverAccount.userId)
+          )
+          receiverWallets.forEach(wallet => {
+            if (!walletLatestTransaction.has(wallet.id) || 
+                new Date(transaction.createdAt) > new Date(walletLatestTransaction.get(wallet.id)!.latestDate)) {
+              walletLatestTransaction.set(wallet.id, {
+                wallet,
+                latestDate: transaction.createdAt
+              })
+            }
+          })
+        }
+      }
+    })
+
+    // Trier par date décroissante et prendre les 4 premiers
+    return Array.from(walletLatestTransaction.values())
+      .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+      .slice(0, 4)
+      .map(item => item.wallet)
+  }, [transactions, accounts, wallets])
+
   // État pour le formulaire de création de wallet
   const [showCreateWalletForm, setShowCreateWalletForm] = useState(false)
   const [createWalletLoading, setCreateWalletLoading] = useState(false)
@@ -4371,14 +4477,52 @@ function PaymentPageContent({ section }: { section: string }) {
                   <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">
                     {accountStats?.totalAccounts ?? accounts.length}
                   </p>
-                  <p className="mt-1 text-[11px] text-gray-400">Nombre de comptes (API comptes).</p>
+                  <p className="mt-1 text-[11px] text-gray-400">Total des comptes (103 premières pages, sans doublons).</p>
+                  
+                  {/* 4 comptes récents avec transactions */}
+                  {getRecentAccountsWithTransactions().length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <p className="text-xs font-medium text-gray-500 mb-2">Comptes récents</p>
+                      <div className="space-y-2">
+                        {getRecentAccountsWithTransactions().map((account, index) => (
+                          <div key={account.id} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-gray-700 truncate" title={account.accountName}>
+                              {account.accountName}
+                            </span>
+                            <span className="text-gray-500">
+                              {account.accountMode}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                   <p className="text-xs font-medium text-gray-500">Wallets</p>
                   <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">
                     {walletStats?.totalWallets ?? wallets.length}
                   </p>
-                  <p className="mt-1 text-[11px] text-gray-400">Nombre de wallets (API wallets).</p>
+                  <p className="mt-1 text-[11px] text-gray-400">Total des wallets (103 premières pages, sans doublons).</p>
+                  
+                  {/* 4 wallets récents avec transactions */}
+                  {getRecentWalletsWithTransactions().length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <p className="text-xs font-medium text-gray-500 mb-2">Wallets récents</p>
+                      <div className="space-y-2">
+                        {getRecentWalletsWithTransactions().map((wallet, index) => (
+                          <div key={wallet.id} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-gray-700 truncate" title={wallet.refName || wallet.id}>
+                              {wallet.refName || `Wallet ${index + 1}`}
+                            </span>
+                            <span className="text-gray-500">
+                              {wallet.walletType}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 shadow-sm">
                   <p className="text-xs font-medium text-gray-500">Frais des transactions par méthode de paiement</p>
