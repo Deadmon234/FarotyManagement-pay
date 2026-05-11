@@ -141,7 +141,7 @@ function HomeContent() {
           <div className="p-8">
             {/* Header */}
             <div className="mb-8">
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-purple-900 to-gray-900 bg-clip-text text-transparent">
+              <h1 className="text-4xl font-bold bg-[#8A56B2] bg-clip-text text-transparent">
                 Tableau de bord
               </h1>
               <p className="text-gray-600">Bienvenue dans le panel d'administration de FAROTY</p>

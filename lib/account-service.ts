@@ -7,7 +7,7 @@ export class AccountService {
   private static cacheExpiry: number = 0
   private static CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 
-  // Récupérer tous les comptes avec pagination
+  // Récupérer tous les comptes avec pagination et déduplication (pour 103 partitions)
   static async getAccounts(forceRefresh: boolean = false): Promise<Account[]> {
     try {
       // Vérifier le cache (sauf si forceRefresh)
@@ -21,14 +21,15 @@ export class AccountService {
       let allAccounts: Account[] = []
       let page = 0
       let hasMorePages = true
-      const MAX_PAGES = 100 // Protection contre les boucles infinies
+      const MAX_PAGES = 200 // Augmenté pour 103 partitions + marge
+      const seenIds = new Set<string>() // Pour la déduplication
 
       // Récupérer toutes les pages
       while (hasMorePages && page < MAX_PAGES) {
         const url = buildWalletUrl(`${WALLET_API_CONFIG.ENDPOINTS.ACCOUNTS}?page=${page}&size=50`)
         const headers = getWalletHeaders(true)
 
-        console.log(`Récupération de la page ${page} des comptes...`)
+        console.log(`[AccountService] Récupération de la page ${page} des comptes...`)
 
         // Créer un contrôleur d'annulation avec timeout
         const controller = new AbortController()
@@ -58,11 +59,20 @@ export class AccountService {
             throw new Error('Format de données invalide: les comptes doivent être un tableau')
           }
 
-          // Ajouter les comptes de cette page
-          const pageAccounts = data.data.content
+          // Ajouter les comptes de cette page avec déduplication
+          const pageAccounts = data.data.content.filter(account => {
+            // Vérifier que le compte n'a pas déjà été ajouté (déduplication partitions)
+            if (seenIds.has(account.id)) {
+              console.warn('Compte dupliqué ignoré (partition):', account.id)
+              return false
+            }
+            seenIds.add(account.id)
+            return true
+          })
+
           allAccounts = allAccounts.concat(pageAccounts)
 
-          console.log(`Page ${page}: ${pageAccounts.length} comptes récupérés`)
+          console.log(`[AccountService] Page ${page}: ${pageAccounts.length} comptes uniques récupérés (total: ${allAccounts.length})`)
 
           // Vérifier s'il y a d'autres pages (avec vérification du champ 'last')
           const isLastPage = data.data.last === true
@@ -76,7 +86,7 @@ export class AccountService {
           page++
         } catch (fetchError) {
           clearTimeout(timeoutId)
-          console.error(`Erreur lors de la récupération de la page ${page}:`, fetchError)
+          console.error(`[AccountService] Erreur lors de la récupération de la page ${page}:`, fetchError)
           // Arrêter la pagination en cas d'erreur
           hasMorePages = false
           break
@@ -84,10 +94,10 @@ export class AccountService {
       }
 
       if (page >= MAX_PAGES) {
-        console.warn(`Limite de ${MAX_PAGES} pages atteinte lors de la pagination`)
+        console.warn(`[AccountService] Limite de ${MAX_PAGES} pages atteinte lors de la pagination`)
       }
 
-      console.log(`Total: ${allAccounts.length} comptes récupérés sur ${page} pages`)
+      console.log(`[AccountService] Total: ${allAccounts.length} comptes uniques récupérés sur ${page} pages`)
 
       // Validation que chaque compte a les champs requis
       const validatedAccounts = allAccounts.filter(account => {

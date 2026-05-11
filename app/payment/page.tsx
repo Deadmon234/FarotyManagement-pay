@@ -17,7 +17,8 @@ import { TransactionService } from '@/lib/transaction-service'
 import { Transaction } from '@/lib/api-config-wallet'
 import { UserService, User } from '@/lib/user-service'
 import SearchableSelect from '@/components/SearchableSelect'
-import { LayoutGrid, Table, Search } from 'lucide-react'
+import AdminTransactionTable from '@/components/AdminTransactionTable'
+import { LayoutGrid, Table, Search, CreditCard, CheckCircle } from 'lucide-react'
 
 // Fonction utilitaire pour obtenir le nom d'un wallet
 const getWalletName = (wallet: Wallet): string => {
@@ -1484,6 +1485,9 @@ function PaymentPageContent({ section }: { section: string }) {
   const [transactionLoading, setTransactionLoading] = useState(true)
   const [transactionError, setTransactionError] = useState<string | null>(null)
   const [transactionStats, setTransactionStats] = useState<any>(null)
+  /** Total catalogue (champ `totalElements` API), toutes paginations confondues — voir bloc « Vue consolidée ». */
+  const [transactionsTotalAllPages, setTransactionsTotalAllPages] = useState(0)
+  const [adminTableRefreshSignal, setAdminTableRefreshSignal] = useState(0)
 
   // État pour le formulaire de création de wallet
   const [showCreateWalletForm, setShowCreateWalletForm] = useState(false)
@@ -1582,15 +1586,25 @@ function PaymentPageContent({ section }: { section: string }) {
     try {
       setTransactionLoading(true)
       setTransactionError(null)
-      const [transactionsData, statsData] = await Promise.all([
-        TransactionService.getTransactions(),
-        TransactionService.getTransactionStats()
-      ])
-      setTransactions(transactionsData)
+      const transactionsData = await TransactionService.getTransactions()
+      const safeTransactionsData = Array.isArray(transactionsData) ? transactionsData : []
+      let statsData
+      try {
+        statsData = await TransactionService.getTransactionStats(safeTransactionsData)
+      } catch {
+        statsData = TransactionService.emptyTransactionStats()
+      }
+      if (!statsData || typeof statsData !== 'object') {
+        statsData = TransactionService.emptyTransactionStats()
+      }
+
+      setTransactions(safeTransactionsData)
       setTransactionStats(statsData)
+      setTransactionsTotalAllPages(TransactionService.getLastCatalogTotalElements())
     } catch (err) {
       console.error('Erreur lors du chargement des transactions:', err)
       setTransactionError('Impossible de charger les transactions. Veuillez réessayer.')
+      setTransactionsTotalAllPages(0)
     } finally {
       setTransactionLoading(false)
     }
@@ -1624,12 +1638,14 @@ function PaymentPageContent({ section }: { section: string }) {
     }
   }, [section, loadCountries])
 
-  // Charger les transactions quand on est sur la section transactions
+  // Charger les transactions + données pour la vue consolidée (comptes, wallets)
   useEffect(() => {
     if (section === 'transactions') {
       loadTransactions()
+      loadWallets()
+      loadAccounts()
     }
-  }, [section, loadTransactions])
+  }, [section, loadTransactions, loadWallets, loadAccounts])
 
   // Filtrer les wallets en fonction de la recherche et du statut
   useEffect(() => {
@@ -1782,8 +1798,24 @@ function PaymentPageContent({ section }: { section: string }) {
 
   const refreshTransactionData = useCallback(() => {
     TransactionService.clearCache()
+    setAdminTableRefreshSignal((n) => n + 1)
     loadTransactions()
-  }, [loadTransactions])
+    loadWallets()
+    loadAccounts()
+  }, [loadTransactions, loadWallets, loadAccounts])
+
+  /** Frais cumulés par méthode de paiement (données des transactions chargées sur cette page). */
+  const transactionFeesByPaymentMethod = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const t of transactions) {
+      const label =
+        (t.paymentMethod?.name && t.paymentMethod.name.trim()) ||
+        t.paymentMethod?.technicalName ||
+        'Non renseigné'
+      map.set(label, (map.get(label) ?? 0) + (Number(t.fee) || 0))
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [transactions])
 
   // Fonction pour créer un nouveau wallet
   const handleCreateWallet = useCallback(async (walletData: any) => {
@@ -1898,29 +1930,167 @@ function PaymentPageContent({ section }: { section: string }) {
   const renderContent = () => {
     switch (section) {
       case 'overview':
+        // Charger les données pour les statistiques
+        useEffect(() => {
+          // Charger comptes, wallets et méthodes si on est en section overview
+          if (section === 'overview') {
+            loadAccounts()
+            loadWallets()
+            loadPaymentMethods()
+          }
+        }, [section, loadAccounts, loadWallets, loadPaymentMethods])
+
         return (
-          <div className="space-y-6">
-            {/* Vue d'ensemble */}
-            <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm">
-                <p className="text-blue-600 text-sm font-semibold mb-2">Solde Total</p>
-                <p className="text-3xl font-bold text-blue-900">2 450 000 XOF</p>
-                <p className="text-xs text-blue-600 mt-2">11 wallets actifs</p>
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 md:p-8 space-y-6">
+            {/* Header Background */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 opacity-0 pointer-events-none" />
+            
+            {/* Header */}
+            <div className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white overflow-hidden">
+              <div className="absolute -right-20 -top-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              <div className="absolute -left-20 -bottom-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              
+              <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex-1">
+                  <h1 className="text-4xl font-bold bg-clip-text text-white mb-2">Vue d'Ensemble</h1>
+                  <p className="text-blue-100 text-lg">Tableau de bord complet de votre système de paiement</p>
+                  <div className="flex gap-6 mt-4 text-sm">
+                    <div>
+                      <span className="text-blue-200">Solde Total</span>
+                      <p className="text-2xl font-bold text-white">{walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : '0 XOF'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Wallets</span>
+                      <p className="text-2xl font-bold text-emerald-300">{walletStats?.totalWallets || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Comptes</span>
+                      <p className="text-2xl font-bold text-amber-300">{accountStats?.totalAccounts || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Méthodes</span>
+                      <p className="text-2xl font-bold text-purple-300">{paymentMethodStats?.totalMethods || 0}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      loadAccounts()
+                      loadWallets()
+                      loadPaymentMethods()
+                    }}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Actualiser
+                  </button>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm">
-                <p className="text-green-600 text-sm font-semibold mb-2">Transactions</p>
-                <p className="text-3xl font-bold text-green-900">1 214</p>
-                <p className="text-xs text-green-600 mt-2">Ce mois-ci</p>
+            </div>
+
+            {/* Statistiques Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Total Balance */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-blue-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-blue-400 to-blue-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">Solde Total</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Solde de Tous les Wallets</p>
+                  <p className="text-4xl font-bold text-blue-900">{walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : 'Chargement...'}</p>
+                  <p className="text-xs text-gray-500 mt-3">{walletStats?.totalWallets || 0} wallets</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Méthodes Actives</p>
-                <p className="text-3xl font-bold text-purple-900">6</p>
-                <p className="text-xs text-purple-600 mt-2">Sur 8 disponibles</p>
+
+              {/* Total Wallets */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-emerald-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <CheckCircle className="w-6 h-6" />
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full">Wallets</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Total Wallets (Tous)</p>
+                  <p className="text-4xl font-bold text-emerald-900">{walletStats?.totalWallets || 0}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: walletStats && walletStats.totalWallets > 0 
+                          ? ((walletStats.activeWallets / walletStats.totalWallets) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">{walletStats?.activeWallets || 0} actifs</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm">
-                <p className="text-orange-600 text-sm font-semibold mb-2">Taux de Succès</p>
-                <p className="text-3xl font-bold text-orange-900">98.5%</p>
-                <p className="text-xs text-orange-600 mt-2">Transactions réussies</p>
+
+              {/* Total Accounts */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-purple-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-purple-400 to-purple-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-purple-600 bg-purple-100 px-3 py-1 rounded-full">Comptes</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Comptes Bancaires (Tous)</p>
+                  <p className="text-4xl font-bold text-purple-900">{accountStats?.totalAccounts || 0}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-purple-500 to-purple-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: accountStats && accountStats.totalAccounts > 0 
+                          ? ((accountStats.activeAccounts / accountStats.totalAccounts) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">{accountStats?.activeAccounts || 0} actifs</p>
+                </div>
+              </div>
+
+              {/* Total Methods */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-orange-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-orange-400 to-orange-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-orange-600 bg-orange-100 px-3 py-1 rounded-full">Méthodes</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Méthodes de Paiement</p>
+                  <p className="text-4xl font-bold text-orange-900">{paymentMethodStats?.totalMethods || 0}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-orange-500 to-orange-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: paymentMethodStats && paymentMethodStats.totalMethods > 0 
+                          ? ((paymentMethodStats.activeMethods / paymentMethodStats.totalMethods) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">{paymentMethodStats?.activeMethods || 0} actives</p>
+                </div>
               </div>
             </div>
 
@@ -1936,7 +2106,7 @@ function PaymentPageContent({ section }: { section: string }) {
                           <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
                         </svg>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">Gérer les Wallets</span>
+                      <span className="text-sm font-medium text-gray-900">Gérer les Wallets ({walletStats?.totalWallets || 0})</span>
                     </div>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                       <path d="M9 5l7 7-7 7"/>
@@ -1951,7 +2121,7 @@ function PaymentPageContent({ section }: { section: string }) {
                           <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 011 0 7.75"/>
                         </svg>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">Comptes Bancaires</span>
+                      <span className="text-sm font-medium text-gray-900">Comptes Bancaires ({accountStats?.totalAccounts || 0})</span>
                     </div>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                       <path d="M9 5l7 7-7 7"/>
@@ -1965,7 +2135,7 @@ function PaymentPageContent({ section }: { section: string }) {
                           <line x1="1" y1="10" x2="23" y2="10"/>
                         </svg>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">Méthodes de Paiement</span>
+                      <span className="text-sm font-medium text-gray-900">Méthodes de Paiement ({paymentMethodStats?.totalMethods || 0})</span>
                     </div>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                       <path d="M9 5l7 7-7 7"/>
@@ -2107,80 +2277,145 @@ function PaymentPageContent({ section }: { section: string }) {
         }
 
         return (
-          <div className="space-y-6">
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 md:p-8 space-y-6">
+            {/* Header Background */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 opacity-0 pointer-events-none" />
+            
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-4xl font-bold text-gray-900">Wallets</h1>
-                <p className="text-gray-600 mt-1">Gérez vos wallets et soldes</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={refreshWalletData}
-                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  Rafraîchir
-                </button>
-                <button 
-                  onClick={() => setShowCreateWalletForm(true)}
-                  className="bg-[#8A56B2] text-white px-4 py-2 rounded-lg hover:bg-[#7a48a0] transition-colors flex items-center gap-2" 
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  Nouveau Wallet
-                </button>
+            <div className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white overflow-hidden">
+              <div className="absolute -right-20 -top-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              <div className="absolute -left-20 -bottom-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              
+              <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex-1">
+                  <h1 className="text-4xl font-bold bg-clip-text text-white mb-2">Gestion des Wallets</h1>
+                  <p className="text-blue-100 text-lg">Gérez tous vos wallets et suivez vos soldes en temps réel</p>
+                  <div className="flex gap-6 mt-4 text-sm">
+                    <div>
+                      <span className="text-blue-200">Total</span>
+                      <p className="text-2xl font-bold text-white">{walletStats ? walletStats.totalWallets : '0'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Actifs</span>
+                      <p className="text-2xl font-bold text-emerald-300">{walletStats ? walletStats.activeWallets : '0'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Solde</span>
+                      <p className="text-2xl font-bold text-amber-300">{walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : '0 XOF'}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={refreshWalletData}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Rafraîchir
+                  </button>
+                  <button 
+                    onClick={() => setShowCreateWalletForm(true)}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Nouveau Wallet
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Statistiques */}
-            <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-blue-600 text-sm font-semibold mb-2">Solde Total</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : '0 XOF'}
-                  </span>
-                </p>
-                <p className="text-xs text-blue-600 mt-auto">
-                  {walletStats ? `${walletStats.totalWallets} wallets` : '0 wallets'}
-                </p>
+            {/* Statistiques Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Total Balance */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-blue-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-blue-400 to-blue-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">Total</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Solde Total</p>
+                  <p className="text-4xl font-bold text-blue-900">{walletStats ? WalletService.formatAmountXOF(walletStats.totalBalance) : '0 XOF'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Tous les wallets confondus</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-green-600 text-sm font-semibold mb-2">Disponible</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {walletStats ? WalletService.formatAmountXOF(walletStats.totalAvailable || 0) : '0 XOF'}
-                  </span>
-                </p>
-                <p className="text-xs text-green-600 mt-auto">
-                  {walletStats ? `${walletStats.activeWallets} actifs` : '0 actifs'}
-                </p>
+
+              {/* Available Balance */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-emerald-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <CheckCircle className="w-6 h-6" />
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full">Disponible</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Solde Disponible</p>
+                  <p className="text-4xl font-bold text-emerald-900">{walletStats ? WalletService.formatAmountXOF(walletStats.availableBalance) : '0 XOF'}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: walletStats && walletStats.totalBalance > 0 
+                          ? ((walletStats.availableBalance / walletStats.totalBalance) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Transactions</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-purple-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {walletStats ? walletStats.totalTransactions : '0'}
-                  </span>
-                </p>
-                <p className="text-xs text-purple-600 mt-auto">Total</p>
+
+              {/* Total Wallets */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-purple-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-purple-400 to-purple-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-purple-600 bg-purple-100 px-3 py-1 rounded-full">Wallets</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Total Wallets</p>
+                  <p className="text-4xl font-bold text-purple-900">{walletStats ? walletStats.totalWallets : '0'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Wallets configurés</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-orange-600 text-sm font-semibold mb-2">En Attente</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-orange-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {walletStats ? WalletService.formatAmountXOF(walletStats.totalPending) : '0 XOF'}
-                  </span>
-                </p>
-                <p className="text-xs text-orange-600 mt-auto">
-                  {walletStats ? `${walletStats.frozenWallets} gelés` : '0 gelés'}
-                </p>
+
+              {/* Active Wallets */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-orange-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-orange-400 to-orange-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-orange-600 bg-orange-100 px-3 py-1 rounded-full">Actifs</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Wallets Actifs</p>
+                  <p className="text-4xl font-bold text-orange-900">{walletStats ? walletStats.activeWallets : '0'}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-orange-500 to-orange-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: walletStats && walletStats.totalWallets > 0 
+                          ? ((walletStats.activeWallets / walletStats.totalWallets) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2282,9 +2517,7 @@ function PaymentPageContent({ section }: { section: string }) {
                               ? 'from-emerald-500 to-emerald-600' 
                               : 'from-gray-500 to-gray-600'
                           }`}>
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
-                              <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                            </svg>
+                            <CreditCard size={28} className="text-inherit" />
                           </div>
                           <div>
                             <h3 className="font-bold text-gray-900 text-lg">{getWalletName(wallet)}</h3>
@@ -2399,9 +2632,7 @@ function PaymentPageContent({ section }: { section: string }) {
                                     ? 'from-emerald-500 to-emerald-600' 
                                     : 'from-gray-500 to-gray-600'
                                 }`}>
-                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
-                                    <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                                  </svg>
+                                  <CreditCard size={20} className="text-inherit" />
                                 </div>
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">{getWalletName(wallet)}</div>
@@ -2580,63 +2811,152 @@ function PaymentPageContent({ section }: { section: string }) {
         }
 
         return (
-          <div className="space-y-6">
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 md:p-8 space-y-6">
+            {/* Header Background */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 opacity-0 pointer-events-none" />
+            
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-4xl font-bold text-gray-900">Comptes</h1>
-                <p className="text-gray-600 mt-1">Gérez vos comptes bancaires</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={refreshAccountData}
-                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  Rafraîchir
-                </button>
-                <button 
-                  onClick={() => setShowCreateAccountForm(true)}
-                  className="bg-[#8A56B2] text-white px-4 py-2 rounded-lg hover:bg-[#7a48a0] transition-colors flex items-center gap-2" 
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  Ajouter un Compte
-                </button>
+            <div className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white overflow-hidden">
+              <div className="absolute -right-20 -top-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              <div className="absolute -left-20 -bottom-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              
+              <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex-1">
+                  <h1 className="text-4xl font-bold bg-clip-text text-white mb-2">Gestion des Comptes</h1>
+                  <p className="text-blue-100 text-lg">Gérez tous vos comptes bancaires et suivez vos soldes en temps réel</p>
+                  <div className="flex gap-6 mt-4 text-sm">
+                    <div>
+                      <span className="text-blue-200">Total</span>
+                      <p className="text-2xl font-bold text-white">{accountStats ? accountStats.totalAccounts : '0'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Actifs</span>
+                      <p className="text-2xl font-bold text-emerald-300">{accountStats ? accountStats.activeAccounts : '0'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Solde</span>
+                      <p className="text-2xl font-bold text-amber-300">{accountStats ? AccountService.formatAmount(accountStats.totalAvailable || 0) : '0 XOF'}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={refreshAccountData}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Rafraîchir
+                  </button>
+                  <button 
+                    onClick={() => setShowCreateAccountForm(true)}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Ajouter un Compte
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Statistiques */}
-            <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-blue-600 text-sm font-semibold mb-2">Total Comptes</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {accountStats ? accountStats.totalAccounts : '0'}
-                  </span>
-                </p>
-                <p className="text-xs text-blue-600 mt-auto">
-                  {accountStats ? `${accountStats.activeAccounts} actifs` : '0 actifs'}
-                </p>
+            {/* Statistiques Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Total Accounts */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-blue-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-blue-400 to-blue-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">Total</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Comptes Bancaires</p>
+                  <p className="text-4xl font-bold text-blue-900">{accountStats ? accountStats.totalAccounts : '0'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Tous les comptes configurés</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-green-600 text-sm font-semibold mb-2">Solde Disponible</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {accountStats ? AccountService.formatAmount(accountStats.totalAvailable || 0) : '0 XOF'}
-                  </span>
-                </p>
-                <p className="text-xs text-green-600 mt-auto">
-                  {accountStats ? `${accountStats.accountsWithWallets} avec wallets` : '0 avec wallets'}
-                </p>
+
+              {/* Active Accounts */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-emerald-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <CheckCircle className="w-6 h-6" />
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full">Actifs</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Comptes Actifs</p>
+                  <p className="text-4xl font-bold text-emerald-900">{accountStats ? accountStats.activeAccounts : '0'}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: accountStats && accountStats.totalAccounts > 0 
+                          ? ((accountStats.activeAccounts / accountStats.totalAccounts) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
+
+              {/* Available Balance */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-purple-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-purple-400 to-purple-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-purple-600 bg-purple-100 px-3 py-1 rounded-full">Solde</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Solde Disponible</p>
+                  <p className="text-4xl font-bold text-purple-900">{accountStats ? AccountService.formatAmount(accountStats.totalAvailable || 0) : '0 XOF'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Total des soldes disponibles</p>
+                </div>
+              </div>
+
+              {/* Accounts with Wallets */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-orange-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-orange-400 to-orange-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-orange-600 bg-orange-100 px-3 py-1 rounded-full">Wallets</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Comptes avec Wallets</p>
+                  <p className="text-4xl font-bold text-orange-900">{accountStats ? accountStats.accountsWithWallets : '0'}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-orange-500 to-orange-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: accountStats && accountStats.totalAccounts > 0 
+                          ? ((accountStats.accountsWithWallets / accountStats.totalAccounts) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Stats Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Wallets Totaux</p>
+                <p className="text-purple-600 text-sm font-semibold mb-2">Total Wallets</p>
                 <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-purple-900 leading-tight break-words min-h-[3rem] flex items-center">
                   <span className="truncate w-full">
                     {accountStats ? accountStats.totalWallets : '0'}
@@ -3019,68 +3339,136 @@ function PaymentPageContent({ section }: { section: string }) {
         }
 
         return (
-          <div className="space-y-6">
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 md:p-8 space-y-6">
+            {/* Header Background */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 opacity-0 pointer-events-none" />
+            
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-4xl font-bold text-gray-900">Méthodes de paiement</h1>
-                <p className="text-gray-600 mt-1">Configurez vos méthodes de paiement</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={refreshPaymentMethodData}
-                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  Rafraîchir
-                </button>
-                <button 
-                  onClick={() => setShowCreatePaymentMethodForm(true)}
-                  className="bg-[#8A56B2] text-white px-4 py-2 rounded-lg hover:bg-[#7a48a0] transition-colors flex items-center gap-2" 
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  Ajouter une méthode
-                </button>
+            <div className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white overflow-hidden">
+              <div className="absolute -right-20 -top-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              <div className="absolute -left-20 -bottom-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              
+              <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex-1">
+                  <h1 className="text-4xl font-bold bg-clip-text text-white mb-2">Méthodes de Paiement</h1>
+                  <p className="text-blue-100 text-lg">Configurez et gérez toutes vos méthodes de paiement en un seul endroit</p>
+                  <div className="flex gap-6 mt-4 text-sm">
+                    <div>
+                      <span className="text-blue-200">Total</span>
+                      <p className="text-2xl font-bold text-white">{paymentMethodStats ? paymentMethodStats.totalMethods : '0'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Actives</span>
+                      <p className="text-2xl font-bold text-emerald-300">{paymentMethodStats ? paymentMethodStats.activeMethods : '0'}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Mobile Money</span>
+                      <p className="text-2xl font-bold text-amber-300">{paymentMethodStats ? paymentMethodStats.mobileMoneyMethods : '0'}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={refreshPaymentMethodData}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Rafraîchir
+                  </button>
+                  <button 
+                    onClick={() => setShowCreatePaymentMethodForm(true)}
+                    className="relative inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Ajouter une méthode
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Statistiques */}
-            <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm">
-                <p className="text-blue-600 text-sm font-semibold mb-2">Total Méthodes</p>
-                <p className="text-3xl font-bold text-blue-900">
-                  {paymentMethodStats ? paymentMethodStats.totalMethods : '0'}
-                </p>
-                <p className="text-xs text-blue-600 mt-2">
-                  {paymentMethodStats ? `${paymentMethodStats.activeMethods} actives` : '0 actives'}
-                </p>
+            {/* Statistiques Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Total Methods */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-blue-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-blue-400 to-blue-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">Total</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Méthodes de Paiement</p>
+                  <p className="text-4xl font-bold text-blue-900">{paymentMethodStats ? paymentMethodStats.totalMethods : '0'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Toutes les méthodes configurées</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm">
-                <p className="text-green-600 text-sm font-semibold mb-2">Transactions</p>
-                <p className="text-3xl font-bold text-green-900">
-                  {paymentMethodStats ? paymentMethodStats.totalTransactions : '0'}
-                </p>
-                <p className="text-xs text-green-600 mt-2">Total</p>
+
+              {/* Active Methods */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-emerald-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <CheckCircle className="w-6 h-6" />
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full">Actives</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Méthodes Actives</p>
+                  <p className="text-4xl font-bold text-emerald-900">{paymentMethodStats ? paymentMethodStats.activeMethods : '0'}</p>
+                  <div className="mt-3 w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-1 rounded-full transition-all" 
+                      style={{
+                        width: paymentMethodStats && paymentMethodStats.totalMethods > 0 
+                          ? ((paymentMethodStats.activeMethods / paymentMethodStats.totalMethods) * 100) + '%'
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Mobile Money</p>
-                <p className="text-3xl font-bold text-purple-900">
-                  {paymentMethodStats ? paymentMethodStats.mobileMoneyMethods : '0'}
-                </p>
-                <p className="text-xs text-purple-600 mt-2">Disponibles</p>
+
+              {/* Mobile Money */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-purple-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-purple-400 to-purple-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-purple-600 bg-purple-100 px-3 py-1 rounded-full">Mobile</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Mobile Money</p>
+                  <p className="text-4xl font-bold text-purple-900">{paymentMethodStats ? paymentMethodStats.mobileMoneyMethods : '0'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Solutions mobiles disponibles</p>
+                </div>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm">
-                <p className="text-orange-600 text-sm font-semibold mb-2">Frais Moyens</p>
-                <p className="text-3xl font-bold text-orange-900">
-                  {paymentMethodStats ? paymentMethodStats.averageFeeRate.toFixed(2) + '%' : '0%'}
-                </p>
-                <p className="text-xs text-orange-600 mt-2">Par transaction</p>
+
+              {/* Average Fees */}
+              <div className="relative group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-orange-100 overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-orange-400 to-orange-600 opacity-10 rounded-full group-hover:opacity-20 transition-opacity" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
+                      </svg>
+                    </div>
+                    <div className="text-xs font-semibold text-orange-600 bg-orange-100 px-3 py-1 rounded-full">Frais</div>
+                  </div>
+                  <p className="text-gray-600 text-sm font-medium mb-2">Frais Moyens</p>
+                  <p className="text-4xl font-bold text-orange-900">{paymentMethodStats ? paymentMethodStats.averageFeeRate.toFixed(2) + '%' : '0%'}</p>
+                  <p className="text-xs text-gray-500 mt-3">Par transaction en moyenne</p>
+                </div>
               </div>
             </div>
 
@@ -3489,81 +3877,45 @@ function PaymentPageContent({ section }: { section: string }) {
           )
         }
 
+        // Affichage principal des pays
         return (
-          <div className="space-y-6">
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 md:p-8 space-y-6">
+            {/* Header Background */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 opacity-0 pointer-events-none" />
+            
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-4xl font-bold text-gray-900">Pays</h1>
-                <p className="text-gray-600 mt-1">Gérez les pays supportés</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={refreshCountryData}
-                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  Rafraîchir
-                </button>
-                <button 
-                  onClick={() => setShowCreateCountryForm(true)}
-                  className="bg-[#8A56B2] text-white px-4 py-2 rounded-lg hover:bg-[#7a48a0] transition-colors flex items-center gap-2" 
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  Ajouter un pays
-                </button>
-              </div>
-            </div>
-
-            {/* Statistiques */}
-            <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-blue-600 text-sm font-semibold mb-2">Pays Actifs</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {countryStats ? countryStats.activeCountries : '0'}
-                  </span>
-                </p>
-                <p className="text-xs text-blue-600 mt-auto">
-                  {countryStats ? `sur ${countryStats.totalCountries} totaux` : 'sur 0 totaux'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-green-600 text-sm font-semibold mb-2">Comptes Totaux</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {countryStats ? countryStats.totalAccounts : '0'}
-                  </span>
-                </p>
-                <p className="text-xs text-green-600 mt-auto">
-                  {countryStats ? `${countryStats.countriesWithAccounts} pays avec comptes` : '0 pays avec comptes'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Méthodes</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-purple-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {countryStats ? countryStats.totalPaymentMethods : '0'}
-                  </span>
-                </p>
-                <p className="text-xs text-purple-600 mt-auto">
-                  {countryStats ? `${countryStats.countriesWithPaymentMethods} pays avec méthodes` : '0 pays avec méthodes'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm min-h-[140px] flex flex-col">
-                <p className="text-orange-600 text-sm font-semibold mb-2">Limites Moyennes</p>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-orange-900 leading-tight break-words min-h-[3rem] flex items-center">
-                  <span className="truncate w-full">
-                    {countryStats ? FarotyCountryService.formatAmount(countryStats.averagePaymentAmount) : '0 XOF'}
-                  </span>
-                </p>
-                <p className="text-xs text-orange-600 mt-auto">Paiement moyen</p>
+            <div className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white overflow-hidden">
+              <div className="absolute -right-20 -top-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              <div className="absolute -left-20 -bottom-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+              
+              <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex-1">
+                  <h1 className="text-4xl font-bold bg-clip-text text-white mb-2">Pays</h1>
+                  <p className="text-blue-100 text-lg">Gérez les pays supportés par votre système</p>
+                  <div className="flex gap-6 mt-4 text-sm">
+                    <div>
+                      <span className="text-blue-200">Total</span>
+                      <p className="text-2xl font-bold text-white">{countryStats?.totalCountries || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Actifs</span>
+                      <p className="text-2xl font-bold text-emerald-300">{countryStats?.activeCountries || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-blue-200">Avec comptes</span>
+                      <p className="text-2xl font-bold text-amber-300">{countryStats?.countriesWithAccounts || 0}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowCreateCountryForm(true)}
+                    className="bg-white text-blue-600 px-6 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-all shadow-lg"
+                    style={{cursor: 'pointer'}}
+                  >
+                    + Ajouter un pays
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -3860,11 +4212,42 @@ function PaymentPageContent({ section }: { section: string }) {
         // Affichage du loading
         if (transactionLoading) {
           return (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-4xl font-bold text-gray-900">Transactions</h1>
-                  <p className="text-gray-600 mt-1">Historique de toutes vos transactions</p>
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 md:p-8 space-y-6">
+              {/* Header Background */}
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 opacity-0 pointer-events-none" />
+              
+              {/* Header */}
+              <div className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white overflow-hidden">
+                <div className="absolute -right-20 -top-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+                <div className="absolute -left-20 -bottom-20 w-40 h-40 bg-white opacity-10 rounded-full" />
+                
+                <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex-1">
+                    <h1 className="text-4xl font-bold bg-clip-text text-white mb-2">Vue d'Ensemble des Transactions</h1>
+                    <p className="text-blue-100 text-lg">Historique complet de toutes vos transactions</p>
+                    <div className="flex gap-6 mt-4 text-sm">
+                      <div>
+                        <span className="text-blue-200">Total</span>
+                        <p className="text-2xl font-bold text-white">0</p>
+                      </div>
+                      <div>
+                        <span className="text-blue-200">Réussies</span>
+                        <p className="text-2xl font-bold text-emerald-300">0</p>
+                      </div>
+                      <div>
+                        <span className="text-blue-200">En attente</span>
+                        <p className="text-2xl font-bold text-amber-300">0</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button className="relative inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                      Actualiser
+                    </button>
+                  </div>
                 </div>
               </div>
               
@@ -3939,163 +4322,110 @@ function PaymentPageContent({ section }: { section: string }) {
         }
 
         return (
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+          <div className="space-y-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h1 className="text-4xl font-bold text-gray-900">Transactions</h1>
-                <p className="text-gray-600 mt-1">Historique de toutes vos transactions</p>
+                <h1 className="text-3xl font-bold tracking-tight text-gray-900">Transactions</h1>
+                <p className="mt-1 max-w-2xl text-sm text-gray-600">
+                  Statistiques sur l’historique consolidé (API locale), puis le tableau détaillé issu de l’API admin Faroty Pay.
+                </p>
               </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={refreshTransactionData}
-                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-                  style={{cursor: 'pointer'}}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  Rafraîchir
-                </button>
-                <button className="bg-[#8A56B2] text-white px-4 py-2 rounded-lg hover:bg-[#7a48a0] transition-colors flex items-center gap-2" style={{cursor: 'pointer'}}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 7v10h18M7 3l10 4-10 4"/>
-                  </svg>
-                  Exporter
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => refreshTransactionData()}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-[#8A56B2] hover:text-[#8A56B2]"
+                style={{ cursor: 'pointer' }}
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                Tout actualiser
+              </button>
             </div>
 
-            {/* Statistiques */}
-            <div className="grid grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200 shadow-sm">
-                <p className="text-blue-600 text-sm font-semibold mb-2">Total Transactions</p>
-                <p className="text-3xl font-bold text-blue-900">
-                  {transactionStats ? transactionStats.totalTransactions : '0'}
-                </p>
-                <p className="text-xs text-blue-600 mt-2">
-                  {transactionStats ? `${transactionStats.successRate}% de succès` : '0% de succès'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200 shadow-sm">
-                <p className="text-green-600 text-sm font-semibold mb-2">Montant Total</p>
-                <p className="text-3xl font-bold text-green-900">
-                  {transactionStats ? TransactionService.formatAmount(transactionStats.totalAmount, 'XOF') : '0 XOF'}
-                </p>
-                <p className="text-xs text-green-600 mt-2">
-                  {transactionStats ? TransactionService.formatAmount(transactionStats.totalFees, 'XOF') + ' de frais' : '0 XOF de frais'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200 shadow-sm">
-                <p className="text-purple-600 text-sm font-semibold mb-2">Complétées</p>
-                <p className="text-3xl font-bold text-purple-900">
-                  {transactionStats ? transactionStats.completedTransactions : '0'}
-                </p>
-                <p className="text-xs text-purple-600 mt-2">
-                  {transactionStats ? `${transactionStats.pendingTransactions} en attente` : '0 en attente'}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border border-orange-200 shadow-sm">
-                <p className="text-orange-600 text-sm font-semibold mb-2">Moyenne</p>
-                <p className="text-3xl font-bold text-orange-900">
-                  {transactionStats ? TransactionService.formatAmount(transactionStats.averageAmount, 'XOF') : '0 XOF'}
-                </p>
-                <p className="text-xs text-orange-600 mt-2">Par transaction</p>
-              </div>
-            </div>
-
-            {/* Filtres et navigation */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">Historique des Transactions</h2>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Toutes
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-[#8A56B2] text-white rounded-lg hover:bg-[#7a48a0] transition-colors" style={{cursor: 'pointer'}}>
-                    Complétées
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    En attente
-                  </button>
-                  <button className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors" style={{cursor: 'pointer'}}>
-                    Échouées
-                  </button>
-                </div>
-              </div>
-
-              {/* Liste des transactions */}
-              <div className="space-y-4">
-                {transactions.map((transaction) => (
-                  <div key={transaction.id} className="border border-gray-200 rounded-xl p-4 hover:border-[#8A56B2] transition-colors cursor-pointer">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-12 h-12 bg-gradient-to-br rounded-xl flex items-center justify-center ${
-                          TransactionService.getTransactionTypeColor(transaction.type) === 'green' 
-                            ? 'from-green-500 to-green-600' 
-                            : TransactionService.getTransactionTypeColor(transaction.type) === 'red'
-                            ? 'from-red-500 to-red-600'
-                            : TransactionService.getTransactionTypeColor(transaction.type) === 'blue'
-                            ? 'from-blue-500 to-blue-600'
-                            : 'from-purple-500 to-purple-600'
-                        }`}>
-                          <span className="text-white font-bold text-lg">
-                            {TransactionService.getTransactionTypeIcon(transaction.type)}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            {TransactionService.getTransactionTypeText(transaction.type)}
-                          </h3>
-                          <p className="text-sm text-gray-500">
-                            {TransactionService.formatReference(transaction.reference)} • {transaction.paymentMethod.name}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {TransactionService.formatDate(transaction.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xl font-bold text-gray-900">
-                          {TransactionService.formatAmount(transaction.amount, transaction.currency)}
-                        </p>
-                        <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full mt-1 ${
-                          TransactionService.getTransactionStatusColor(transaction.status) === 'green' 
-                            ? 'bg-green-100 text-green-700'
-                            : TransactionService.getTransactionStatusColor(transaction.status) === 'red'
-                            ? 'bg-red-100 text-red-700'
-                            : TransactionService.getTransactionStatusColor(transaction.status) === 'orange'
-                            ? 'bg-orange-100 text-orange-700'
-                            : TransactionService.getTransactionStatusColor(transaction.status) === 'blue'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {TransactionService.getTransactionStatusText(transaction.status)}
-                        </span>
-                        {transaction.fee > 0 && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Frais: {TransactionService.formatAmount(transaction.fee, transaction.currency)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Actions rapides */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-600">
-                    <span className="font-semibold">{transactionStats?.totalTransactions || 0} transactions</span> • 
-                    {transactionStats?.completedTransactions || 0} complétées • 
-                    {transactionStats?.pendingTransactions || 0} en attente
+            <div>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Vue consolidée
+              </h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-gray-500">Total transactions</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">
+                    {transactionsTotalAllPages > 0
+                      ? transactionsTotalAllPages
+                      : (transactionStats?.totalTransactions ?? 0)}
                   </p>
-                  <button className="text-[#8A56B2] hover:text-[#7a48a0] text-sm font-medium transition-colors" style={{cursor: 'pointer'}}>
-                    Voir tout l'historique →
-                  </button>
+                  <p className="mt-1 text-[11px] leading-snug text-gray-400">
+                    {transactionsTotalAllPages > 0
+                      ? 'Toutes les transactions enregistrées (toutes les pages, d’après l’API).'
+                      : 'Total sur les lignes chargées si l’API ne renvoie pas le catalogue complet.'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-gray-500">Comptes</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">
+                    {accountStats?.totalAccounts ?? accounts.length}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-400">Nombre de comptes (API comptes).</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-gray-500">Wallets</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">
+                    {walletStats?.totalWallets ?? wallets.length}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-400">Nombre de wallets (API wallets).</p>
+                </div>
+                <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 shadow-sm">
+                  <p className="text-xs font-medium text-gray-500">Frais des transactions par méthode de paiement</p>
+                  <p className="mt-1 text-xl font-bold tabular-nums text-[#5c3d7d]">
+                    {new Intl.NumberFormat('fr-FR', {
+                      style: 'currency',
+                      currency: 'XAF',
+                      maximumFractionDigits: 0,
+                    }).format(transactionStats?.totalFees ?? 0)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500">Total des frais sur les transactions chargées.</p>
+                  {transactionFeesByPaymentMethod.length > 0 ? (
+                    <ul className="mt-3 max-h-40 space-y-1.5 overflow-y-auto text-xs text-gray-700">
+                      {transactionFeesByPaymentMethod.map(([method, amount]) => (
+                        <li key={method} className="flex justify-between gap-2 border-b border-violet-100/80 pb-1 last:border-0">
+                          <span className="truncate font-medium text-gray-800" title={method}>
+                            {method}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-[#5c3d7d]">
+                            {new Intl.NumberFormat('fr-FR', {
+                              style: 'currency',
+                              currency: 'XAF',
+                              maximumFractionDigits: 0,
+                            }).format(amount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-xs text-gray-400">Aucune transaction chargée pour détailler les frais.</p>
+                  )}
                 </div>
               </div>
+            </div>
+
+            <div>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Détail administrateur
+              </h2>
+              <AdminTransactionTable
+                embedded
+                showEmbeddedStats
+                limit={20}
+                autoRefresh={true}
+                refreshInterval={60000}
+                refreshSignal={adminTableRefreshSignal}
+              />
             </div>
           </div>
         )

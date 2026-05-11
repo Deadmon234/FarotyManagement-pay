@@ -94,7 +94,7 @@ export function ServiceWorkerRegister() {
       if ('serviceWorker' in navigator && 'SyncManager' in window) {
         try {
           const registration = await navigator.serviceWorker.ready;
-          if (registration.sync) {
+          if ((registration as any).sync) {
             console.log('[App] Background Sync supported');
           }
         } catch (error) {

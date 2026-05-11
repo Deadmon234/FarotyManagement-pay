@@ -1,5 +1,6 @@
 // Utilitaires pour navigation et interactions web cross-platform
 
+import React, { MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -65,19 +66,21 @@ export function openInNewTab(url: string, target = '_blank') {
 /**
  * Crée un lien cliquable sécurisé
  */
+interface SafeLinkProps {
+  href: string;
+  onClick?: () => void;
+  external?: boolean;
+  children: React.ReactNode;
+  [key: string]: any;
+}
+
 export function SafeLinkComponent({
   href,
   onClick,
   external = false,
   children,
   ...props
-}: {
-  href: string;
-  onClick?: () => void;
-  external?: boolean;
-  children: React.ReactNode;
-  [key: string]: any;
-}) {
+}: SafeLinkProps) {
   const { push } = useSafeNavigation();
 
   const handleClick = (e: React.MouseEvent) => {
@@ -91,11 +94,11 @@ export function SafeLinkComponent({
     }
   };
 
-  return (
-    <a href={href} onClick={handleClick} {...props}>
-      {children}
-    </a>
-  );
+  return React.createElement('a', {
+    href,
+    onClick: handleClick,
+    ...props
+  }, children);
 }
 
 /**

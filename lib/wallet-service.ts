@@ -8,7 +8,7 @@ export class WalletService {
   private static cacheExpiry: number = 0
   private static CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 
-  // Récupérer tous les wallets avec retry et validation
+  // Récupérer tous les wallets avec retry, validation et pagination (pour 103 partitions)
   static async getWallets(forceRefresh: boolean = false): Promise<Wallet[]> {
     try {
       // Vérifier le cache (sauf si forceRefresh)
@@ -17,59 +17,93 @@ export class WalletService {
         return this.walletsCache
       }
 
-      const url = buildWalletUrl(WALLET_API_CONFIG.ENDPOINTS.WALLETS)
-      const headers = getWalletHeaders(true)
-
-      console.log('Récupération des wallets depuis l\'API...')
+      console.log('Récupération de tous les wallets depuis l\'API avec pagination...')
       
-      // Ajouter un timeout et retry logic
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+      let allWallets: Wallet[] = []
+      let page = 0
+      let hasMorePages = true
+      const MAX_PAGES = 1000 // Protection contre les boucles infinies
+      const seenIds = new Set<string>() // Pour la déduplication
 
-      try {
-        const response = await fetch(url, {
-          method: 'GET',
-          headers,
-          signal: controller.signal,
-        })
+      // Récupérer toutes les pages
+      while (hasMorePages && page < MAX_PAGES) {
+        const url = buildWalletUrl(`${WALLET_API_CONFIG.ENDPOINTS.WALLETS}?page=${page}&size=50`)
+        const headers = getWalletHeaders(true)
 
-        clearTimeout(timeoutId)
+        console.log(`[WalletService] Récupération de la page ${page} des wallets...`)
+        
+        // Ajouter un timeout et retry logic
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
 
-        if (!response.ok) {
-          throw new Error(`Erreur HTTP: ${response.status} - ${response.statusText}`)
-        }
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers,
+            signal: controller.signal,
+          })
 
-        const data: WalletApiResponse<Wallet> = await response.json()
+          clearTimeout(timeoutId)
 
-        if (!data.success) {
-          throw new Error(data.message || 'Erreur lors de la récupération des wallets')
-        }
-
-        // Validation des données
-        if (!Array.isArray(data.data)) {
-          throw new Error('Format de données invalide: les wallets doivent être un tableau')
-        }
-
-        // Validation que chaque wallet a les champs requis
-        const validatedWallets = data.data.filter(wallet => {
-          const hasRequiredFields = wallet.id && wallet.balance && wallet.currency
-          if (!hasRequiredFields) {
-            console.warn('Wallet invalide ignoré:', wallet.id)
+          if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status} - ${response.statusText}`)
           }
-          return hasRequiredFields
-        })
 
-        console.log(`${validatedWallets.length} wallets validés sur ${data.data.length} reçus`)
+          const data = await response.json()
+
+          if (!data.success) {
+            throw new Error(data.message || 'Erreur lors de la récupération des wallets')
+          }
+
+          // Gérer les deux formats de réponse possibles: paginé et non-paginé
+          let pageWallets: Wallet[] = []
+          let isLastPage = true
+
+          if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+            // Format paginé: {content: [], last: true, ...}
+            pageWallets = Array.isArray(data.data.content) ? data.data.content : []
+            isLastPage = data.data.last === true
+          } else if (Array.isArray(data.data)) {
+            // Format non-paginé: array directement
+            pageWallets = data.data
+            isLastPage = page === 0 // Si c'est la première page et pas de pagination, arrêter
+          }
+
+          // Validation que chaque wallet a les champs requis ET déduplication
+          const validatedWallets = pageWallets.filter(wallet => {
+            const hasRequiredFields = wallet.id && wallet.balance && wallet.currency
+            if (!hasRequiredFields) {
+              console.warn('Wallet invalide ignoré:', wallet.id)
+              return false
+            }
+            // Déduplication: vérifier que l'ID n'a pas déjà été ajouté
+            if (seenIds.has(wallet.id)) {
+              console.warn('Wallet dupliqué ignoré (partition):', wallet.id)
+              return false
+            }
+            seenIds.add(wallet.id)
+            return true
+          })
+
+          allWallets = allWallets.concat(validatedWallets)
+          console.log(`[WalletService] Page ${page}: ${validatedWallets.length} wallets uniques récupérés (total: ${allWallets.length})`)
+
+          hasMorePages = !isLastPage && pageWallets.length > 0
+          page++
+        } catch (fetchError) {
+          clearTimeout(timeoutId)
+          console.error(`[WalletService] Erreur lors de la récupération de la page ${page}:`, fetchError)
+          hasMorePages = false // Arrêter la pagination en cas d'erreur
+        }
+      }
+
+      console.log(`[WalletService] Total de ${allWallets.length} wallets uniques récupérés sur ${page} pages`)
 
         // Mettre en cache
-        this.walletsCache = validatedWallets
+        this.walletsCache = allWallets
         this.cacheExpiry = Date.now() + this.CACHE_DURATION
 
-        return validatedWallets
-      } catch (fetchError) {
-        clearTimeout(timeoutId)
-        throw fetchError
-      }
+        return allWallets
     } catch (error) {
       console.error('Erreur WalletService.getWallets:', error)
       
@@ -103,6 +137,29 @@ export class WalletService {
       return wallets.filter(wallet => wallet.walletType === type)
     } catch (error) {
       console.error('Erreur WalletService.getWalletsByType:', error)
+      throw error
+    }
+  }
+
+  // Filtrer les wallets par ID de compte
+  static async getWalletsByAccountId(accountId: string): Promise<Wallet[]> {
+    try {
+      const wallets = await this.getWallets()
+      return wallets.filter(wallet => wallet.account.id === accountId)
+    } catch (error) {
+      console.error('Erreur WalletService.getWalletsByAccountId:', error)
+      throw error
+    }
+  }
+
+  // Filtrer les transactions par ID de compte (placeholder)
+  static async getTransactionsByAccountId(accountId: string): Promise<any[]> {
+    try {
+      // Pour l'instant, retourner un tableau vide car cette fonctionnalité n'est pas encore implémentée
+      console.warn('getTransactionsByAccountId pas encore implémenté, retourne un tableau vide')
+      return []
+    } catch (error) {
+      console.error('Erreur WalletService.getTransactionsByAccountId:', error)
       throw error
     }
   }
@@ -263,6 +320,16 @@ export class WalletService {
       })
 
       if (!response.ok) {
+        // Gérer spécifiquement les erreurs 409 (Conflict)
+        if (response.status === 409) {
+          try {
+            const errorData = await response.json()
+            throw new Error(errorData.message || 'Un wallet avec ces informations existe déjà')
+          } catch {
+            throw new Error('Un wallet avec ces informations existe déjà (Conflit)')
+          }
+        }
+        
         throw new Error(`Erreur HTTP: ${response.status}`)
       }
 

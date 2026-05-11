@@ -1,0 +1,19 @@
+
+> farotymanagement-pay@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.105:3000
+✓ Ready in 310ms
+⚠ Invalid next.config.ts options detected: 
+⚠     Unrecognized key(s) in object: 'turbopack' at "experimental"
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+Error: An IO error occurred while attempting to create and acquire the lockfile
+    at ignore-listed frames {
+  [cause]: Error: Stale file handle (os error 116)
+      at ignore-listed frames {
+    code: 'GenericFailure'
+  }
+}
+[?25h

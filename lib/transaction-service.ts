@@ -1,53 +1,117 @@
-import { buildWalletUrl, getWalletHeaders, TransactionsApiResponse, Transaction } from './api-config-wallet'
+import { buildWalletUrl, getWalletHeaders, WALLET_API_CONFIG, TransactionsApiResponse, Transaction } from './api-config-wallet'
 
 // Service pour la gestion des transactions
 export class TransactionService {
   // Cache pour les transactions
   private static transactionsCache: Transaction[] | null = null
   private static cacheExpiry: number = 0
-  private static CACHE_DURATION = 2 * 60 * 1000 // 2 minutes (plus court pour les données fréquemment mises à jour)
+  private static readonly CACHE_DURATION = 2 * 60 * 1000 // 2 minutes (données fréquemment mises à jour)
 
-  // Récupérer toutes les transactions
+  /** Total en base (toutes pages), dernier fetch `/api/v1/transactions` — null si pas encore chargé ou cache vidé. */
+  private static lastCatalogTotalElements: number | null = null
+
+  /** Nombre total de transactions côté API (pagination complète), d’après le dernier appel réussi. */
+  static getLastCatalogTotalElements(): number {
+    return typeof this.lastCatalogTotalElements === 'number' && !Number.isNaN(this.lastCatalogTotalElements)
+      ? this.lastCatalogTotalElements
+      : 0
+  }
+
+  /** Retour utilisable quand les stats ne peuvent pas être calculées (erreur réseau, etc.). */
+  static emptyTransactionStats() {
+    return this.getDefaultStats()
+  }
+
+  private static getDefaultStats() {
+    return {
+      totalTransactions: 0,
+      pendingTransactions: 0,
+      completedTransactions: 0,
+      failedTransactions: 0,
+      cancelledTransactions: 0,
+      refundedTransactions: 0,
+      depositTransactions: 0,
+      withdrawalTransactions: 0,
+      transferTransactions: 0,
+      paymentTransactions: 0,
+      totalAmount: 0,
+      totalFees: 0,
+      totalNetAmount: 0,
+      averageAmount: 0,
+      successRate: 0,
+    }
+  }
+
+  private static normalizeTransactions(input: unknown): Transaction[] {
+    if (!Array.isArray(input)) {
+      return []
+    }
+
+    return input as Transaction[]
+  }
+
+  /**
+   * Récupère toutes les transactions depuis l'API locale
+   * @returns Promise<Transaction[]> - Liste des transactions
+   */
   static async getTransactions(): Promise<Transaction[]> {
     try {
-      // Vérifier le cache
-      if (this.transactionsCache && Date.now() < this.cacheExpiry) {
+      // Forcer le rechargement pour le débogage
+      this.clearCache()
+      
+      // Retourner les données en cache si valides (toujours un tableau, y compris [])
+      if (Array.isArray(this.transactionsCache) && Date.now() < this.cacheExpiry) {
         return this.transactionsCache
       }
 
-      const url = buildWalletUrl(WALLET_API_CONFIG.ENDPOINTS.TRANSACTIONS)
-      const headers = getWalletHeaders(true)
-
-      const response = await fetch(url, {
+      // Appeler l'API locale (pagination ; totalElements = catalogue complet)
+      const response = await fetch('/api/v1/transactions?page=0&size=100', {
         method: 'GET',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
       })
 
       if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`)
+        console.error(`[TransactionService] Erreur HTTP ${response.status} de l'API locale`)
+        throw new Error(`Erreur HTTP ${response.status}`)
       }
 
-      const data: TransactionsApiResponse = await response.json()
+      const data = await response.json()
+      console.log('[TransactionService] API Response:', data)
 
       if (!data.success) {
-        throw new Error(data.message || 'Erreur lors de la récupération des transactions')
+        console.warn('[TransactionService] API retourné success=false:', data.message)
+        // Ne pas jeter d'erreur, retourner un tableau vide
+        return []
       }
 
-      // Mettre en cache
-      this.transactionsCache = data.data.content
+      // Extraire les transactions de la réponse paginée
+      const transactions = this.normalizeTransactions(data.data?.content)
+      console.log('[TransactionService] transactions extraites:', transactions.length)
+
+      const rawTotal = data.data?.totalElements
+      this.lastCatalogTotalElements =
+        typeof rawTotal === 'number' && !Number.isNaN(rawTotal)
+          ? rawTotal
+          : transactions.length
+
+      // Mettre en cache pour optimiser les appels suivants
+      this.transactionsCache = transactions
       this.cacheExpiry = Date.now() + this.CACHE_DURATION
 
-      return data.data.content
+      return this.normalizeTransactions(transactions)
     } catch (error) {
-      console.error('Erreur TransactionService.getTransactions:', error)
-      throw error
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error('[TransactionService] getTransactions erreur:', errorMsg)
+      // Retourner un tableau vide plutôt que de propager l'erreur
+      // Ça permet au composant de continuer à fonctionner
+      return []
     }
   }
 
   // Récupérer une transaction par ID
   static async getTransactionById(id: string): Promise<Transaction | null> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       return transactions.find(transaction => transaction.id === id) || null
     } catch (error) {
       console.error('Erreur TransactionService.getTransactionById:', error)
@@ -58,40 +122,40 @@ export class TransactionService {
   // Filtrer les transactions par statut
   static async getTransactionsByStatus(status: Transaction['status']): Promise<Transaction[]> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       return transactions.filter(transaction => transaction.status === status)
     } catch (error) {
       console.error('Erreur TransactionService.getTransactionsByStatus:', error)
-      throw error
+      return []
     }
   }
 
   // Filtrer les transactions par type
   static async getTransactionsByType(type: Transaction['type']): Promise<Transaction[]> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       return transactions.filter(transaction => transaction.type === type)
     } catch (error) {
       console.error('Erreur TransactionService.getTransactionsByType:', error)
-      throw error
+      return []
     }
   }
 
   // Filtrer les transactions par méthode de paiement
   static async getTransactionsByPaymentMethod(paymentMethodId: string): Promise<Transaction[]> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       return transactions.filter(transaction => transaction.paymentMethod.id === paymentMethodId)
     } catch (error) {
       console.error('Erreur TransactionService.getTransactionsByPaymentMethod:', error)
-      throw error
+      return []
     }
   }
 
   // Obtenir les transactions récentes (dernières 24h)
   static async getRecentTransactions(): Promise<Transaction[]> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000)
       
       return transactions.filter(transaction => {
@@ -100,54 +164,67 @@ export class TransactionService {
       })
     } catch (error) {
       console.error('Erreur TransactionService.getRecentTransactions:', error)
-      throw error
+      return []
     }
   }
 
   // Calculer le montant total des transactions
   static async getTotalAmount(): Promise<number> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       return transactions.reduce((total, transaction) => total + transaction.amount, 0)
     } catch (error) {
       console.error('Erreur TransactionService.getTotalAmount:', error)
-      throw error
+      return 0
     }
   }
 
   // Calculer le montant total des frais
   static async getTotalFees(): Promise<number> {
     try {
-      const transactions = await this.getTransactions()
+      const transactions = this.normalizeTransactions(await this.getTransactions())
       return transactions.reduce((total, transaction) => total + transaction.fee, 0)
     } catch (error) {
       console.error('Erreur TransactionService.getTotalFees:', error)
-      throw error
+      return 0
     }
   }
 
   // Obtenir les statistiques des transactions
-  static async getTransactionStats() {
+  static async getTransactionStats(passTransactions?: Transaction[] | null) {
+    const safeArray = (value: unknown): Transaction[] => {
+      if (!Array.isArray(value)) return []
+      return value as Transaction[]
+    }
+
     try {
-      const transactions = await this.getTransactions()
-      
-      const pendingTransactions = transactions.filter(t => t.status === 'PENDING')
-      const completedTransactions = transactions.filter(t => t.status === 'COMPLETED')
-      const failedTransactions = transactions.filter(t => t.status === 'FAILED')
-      const cancelledTransactions = transactions.filter(t => t.status === 'CANCELLED')
-      const refundedTransactions = transactions.filter(t => t.status === 'REFUNDED')
-      
-      const depositTransactions = transactions.filter(t => t.type === 'DEPOSIT')
-      const withdrawalTransactions = transactions.filter(t => t.type === 'WITHDRAWAL')
-      const transferTransactions = transactions.filter(t => t.type === 'TRANSFER')
-      const paymentTransactions = transactions.filter(t => t.type === 'PAYMENT')
-      
-      const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0)
-      const totalFees = transactions.reduce((sum, t) => sum + t.fee, 0)
-      const totalNetAmount = transactions.reduce((sum, t) => sum + t.netAmount, 0)
+      let list = safeArray(passTransactions)
+      if (list.length === 0) {
+        const fetched = await this.getTransactions()
+        list = safeArray(fetched)
+      }
+      list = this.normalizeTransactions(list)
+      if (list.length === 0) {
+        return this.getDefaultStats()
+      }
+
+      const pendingTransactions = list.filter(t => t.status === 'PENDING')
+      const completedTransactions = list.filter(t => t.status === 'COMPLETED')
+      const failedTransactions = list.filter(t => t.status === 'FAILED')
+      const cancelledTransactions = list.filter(t => t.status === 'CANCELLED')
+      const refundedTransactions = list.filter(t => t.status === 'REFUNDED')
+
+      const depositTransactions = list.filter(t => t.type === 'DEPOSIT')
+      const withdrawalTransactions = list.filter(t => t.type === 'WITHDRAWAL')
+      const transferTransactions = list.filter(t => t.type === 'TRANSFER')
+      const paymentTransactions = list.filter(t => t.type === 'PAYMENT')
+
+      const totalAmount = list.reduce((sum, t) => sum + t.amount, 0)
+      const totalFees = list.reduce((sum, t) => sum + t.fee, 0)
+      const totalNetAmount = list.reduce((sum, t) => sum + t.netAmount, 0)
 
       return {
-        totalTransactions: transactions.length,
+        totalTransactions: list.length,
         pendingTransactions: pendingTransactions.length,
         completedTransactions: completedTransactions.length,
         failedTransactions: failedTransactions.length,
@@ -160,12 +237,12 @@ export class TransactionService {
         totalAmount,
         totalFees,
         totalNetAmount,
-        averageAmount: transactions.length > 0 ? Math.round(totalAmount / transactions.length) : 0,
-        successRate: transactions.length > 0 ? Math.round((completedTransactions.length / transactions.length) * 100) : 0
+        averageAmount: list.length > 0 ? Math.round(totalAmount / list.length) : 0,
+        successRate: list.length > 0 ? Math.round((completedTransactions.length / list.length) * 100) : 0
       }
     } catch (error) {
       console.error('Erreur TransactionService.getTransactionStats:', error)
-      throw error
+      return this.getDefaultStats()
     }
   }
 
@@ -173,6 +250,7 @@ export class TransactionService {
   static clearCache(): void {
     this.transactionsCache = null
     this.cacheExpiry = 0
+    this.lastCatalogTotalElements = null
   }
 
   // Formater la date
@@ -277,6 +355,3 @@ export class TransactionService {
     return info.name
   }
 }
-
-// Importer les constantes nécessaires
-import { WALLET_API_CONFIG } from './api-config-wallet'

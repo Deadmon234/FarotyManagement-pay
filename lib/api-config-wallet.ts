@@ -7,6 +7,7 @@ export const WALLET_API_CONFIG = {
   ENDPOINTS: {
     WALLETS: '/payments/api/v1/wallets',
     TRANSACTIONS: '/payments/api/v1/transactions',
+    ADMIN_TRANSACTIONS: '/payments/api/v1/admin/transactions',
     ACCOUNTS: '/payments/api/v1/accounts',
     PAYMENT_METHODS: '/payments/api/v1/payment-methods',
     COUNTRIES: '/payments/api/v1/countries',
